@@ -1,0 +1,367 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design Tokens - Terminal Aesthetic */
+:root {
+  /* Backgrounds */
+  --bg-base: #0a0a0f;
+  --bg-surface: #111118;
+  --bg-hover: #1a1a24;
+  --bg-code: #0f0f15;
+  
+  /* Text */
+  --text-primary: #e8e8f0;
+  --text-secondary: #9a9aaf;
+  --text-muted: #6a6a7f;
+  
+  /* Borders */
+  --border: #2a2a3a;
+  
+  /* Primary (Neon Green) */
+  --primary: #00ff88;
+  --primary-hover: #00cc6f;
+  --primary-muted: #00aa5a;
+  
+  /* Secondary (Neon Blue) */
+  --secondary: #5b9fff;
+  --secondary-hover: #4a8fff;
+  
+  /* Accents */
+  --accent-error: #ff6b9d;
+  --accent-success: #00ff88;
+  --accent-warn: #ffd93d;
+  --accent-logic-warning: #ffaa44;
+  
+  /* Motion */
+  --motion-fast: 100ms;
+  --motion-base: 150ms;
+  --motion-slow: 300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Typography */
+  --font-mono: "JetBrains Mono", "Fira Code", "Consolas", "Monaco", "Courier New", monospace;
+  --font-xs: 11px;
+  --font-sm: 13px;
+  --font-base: 15px;
+  --font-lg: 18px;
+  --font-xl: 24px;
+  --font-2xl: 32px;
+}
+
+@layer base {
+  * {
+    font-family: var(--font-mono);
+  }
+  
+body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-size: var(--font-base);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Custom scrollbar - Terminal style */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: var(--bg-base);
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+  
+  /* Selection */
+  ::selection {
+    background: var(--primary);
+    color: var(--bg-base);
+  }
+  
+  /* KaTeX styles for dark theme */
+  .katex {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex-display {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .katex-mathml {
+    display: none;
+  }
+  
+  .katex .katex-html {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .base {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mord {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mrel {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mbin {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mop {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mopen {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mclose {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mpunct {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mfrac {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .msqrt {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mroot {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .msub {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .msup {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .munderover {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mtable {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mspace {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mtext {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mstyle {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .minner {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mord.mathdefault {
+    color: var(--text-primary) !important;
+  }
+  
+  /* Додаткові стилі для всіх елементів KaTeX */
+  .katex * {
+    color: inherit !important;
+  }
+  
+  .katex .vlist-t {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .vlist-s {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .sizing {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delimsizing {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .nulldelimer {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delim-size1 {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delim-size2 {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delim-size3 {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delim-size4 {
+    color: var(--text-primary) !important;
+  }
+}
+
+  .katex {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex-display {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .katex-mathml {
+    display: none;
+  }
+  
+  .katex .katex-html {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .base {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mord {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mrel {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mbin {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mop {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mopen {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mclose {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mpunct {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mfrac {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .msqrt {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mroot {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .msub {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .msup {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .munderover {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mtable {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mspace {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mtext {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mstyle {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .minner {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .mord.mathdefault {
+    color: var(--text-primary) !important;
+  }
+  
+  /* Додаткові стилі для всіх елементів KaTeX */
+  .katex * {
+    color: inherit !important;
+  }
+  
+  .katex .vlist-t {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .vlist-s {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .sizing {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delimsizing {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .nulldelimer {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delim-size1 {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delim-size2 {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delim-size3 {
+    color: var(--text-primary) !important;
+  }
+  
+  .katex .delim-size4 {
+    color: var(--text-primary) !important;
+  }

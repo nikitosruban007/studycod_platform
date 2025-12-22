@@ -1,0 +1,51 @@
+import "reflect-metadata";
+import { DataSource } from "typeorm";
+import { User } from "./entities/User";
+import { Task } from "./entities/Task";
+import { Grade } from "./entities/Grade";
+import { Topic } from "./entities/Topic";
+import { Class } from "./entities/Class";
+import { Student } from "./entities/Student";
+import { EduLesson } from "./entities/EduLesson";
+import { EduTask } from "./entities/EduTask";
+import { TestData } from "./entities/TestData";
+import { EduGrade } from "./entities/EduGrade";
+import { SummaryGrade } from "./entities/SummaryGrade";
+
+const dbPort = process.env.DB_PORT != null ? parseInt(process.env.DB_PORT, 10) : 3306;
+
+export const AppDataSource = new DataSource({
+  type: "mysql",
+  url: process.env.DATABASE_URL,
+  host: process.env.DB_HOST || "localhost",
+  port: dbPort,
+  username: process.env.DB_USER || "root",
+  password: process.env.DB_PASS || "",
+  database: process.env.DB_NAME || "studycod",
+  entities: [
+    User, 
+    Task, 
+    Grade, 
+    Topic,
+    Class,
+    Student,
+    EduLesson,
+    EduTask,
+    TestData,
+    EduGrade,
+    SummaryGrade,
+  ],
+  synchronize: false,
+  logging: false,
+  migrations: ["dist/migrations/*.js"],
+  extra: {
+    connectionLimit: parseInt(process.env.DB_POOL_SIZE || "10", 10),
+    connectTimeout: 5000,
+    queueLimit: 0,
+    multipleStatements: false,
+    dateStrings: false,
+  },
+  cache: false,
+});
+
+export default AppDataSource;

@@ -1,0 +1,38 @@
+
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StudyCod Web</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  </head>
+  <body>
+    <div id="root">
+      <noscript>
+        <div style="padding: 20px; font-family: monospace; color: #fff; background: #1a1a1a; min-height: 100vh; display: flex; align-items: center; justify-content: center;">
+          <div style="text-align: center;">
+            <h1 style="color: #ef4444;">JavaScript вимкнено</h1>
+            <p>Будь ласка, увімкніть JavaScript для роботи цього додатку.</p>
+          </div>
+        </div>
+      </noscript>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Діагностика: перевірка чи завантажився скрипт
+      console.log("HTML loaded, root element:", document.getElementById("root"));
+      window.addEventListener("error", function(e) {
+        console.error("Global error:", e.error, e.filename, e.lineno, e.colno);
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        console.error("Unhandled promise rejection:", e.reason);
+      });
+    </script>
+  </body>
+</html>
+
