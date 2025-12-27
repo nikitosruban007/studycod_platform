@@ -1,6 +1,7 @@
 // frontend/src/pages/LessonDetailsPage.tsx
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Modal } from "../components/ui/Modal";
@@ -18,6 +19,9 @@ import {
   addTestData,
   updateTaskDetails,
   getTask,
+  startLessonAttempt,
+  getLessonAttemptStatus,
+  getControlWorkStatus,
   type Lesson,
   type Task,
   type CreateTaskRequest,
@@ -25,14 +29,19 @@ import {
   type TestDataItem,
   type TaskWithGrade,
 } from "../lib/api/edu";
-import { Plus, ArrowLeft, FileText, Users, Sparkles, Play, Trash2, Edit2, X, Send, Settings, Save } from "lucide-react";
+import { GlobalTimer } from "../components/GlobalTimer";
+import { Plus, ArrowLeft, FileText, Users, Sparkles, Play, Trash2, Edit2, X, Send, Settings, Save, Clock } from "lucide-react";
 import { getMe } from "../lib/api/profile";
 import { MarkdownView } from "../components/MarkdownView";
 import type { User } from "../types";
+import { isDeadlineExpired } from "../utils/timezone";
 
 export const LessonDetailsPage: React.FC = () => {
+  const { t, i18n } = useTranslation();
+  const tr = (uk: string, en: string) => (i18n.language?.toLowerCase().startsWith("en") ? en : uk);
   const { lessonId } = useParams<{ lessonId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [lesson, setLesson] = useState<Lesson & { tasks: Task[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
@@ -68,26 +77,42 @@ export const LessonDetailsPage: React.FC = () => {
   const [taskMaxAttempts, setTaskMaxAttempts] = useState<number>(1);
   const [taskDeadline, setTaskDeadline] = useState<string>("");
   const [taskIsClosed, setTaskIsClosed] = useState<boolean>(false);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [timeExpired, setTimeExpired] = useState(false);
   // Quiz state for students
   const [studentQuizAnswers, setStudentQuizAnswers] = useState<Record<number, "А" | "Б" | "В" | "Г" | "Д">>({});
   const [studentQuizSubmitted, setStudentQuizSubmitted] = useState(false);
   const [studentQuizGrade, setStudentQuizGrade] = useState<number | null>(null);
+  const [studentQuizReview, setStudentQuizReview] = useState<any | null>(null);
   const [hasAutoRedirected, setHasAutoRedirected] = useState(false);
+  const [controlWorkStatus, setControlWorkStatus] = useState<"NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | null>(null);
 
   useEffect(() => {
-    loadUser();
+    const initialize = async () => {
+      await loadUser();
     if (lessonId) {
-      loadLesson();
+        await loadLesson();
       // Скидаємо прапорець при зміні уроку
       setHasAutoRedirected(false);
     }
-  }, [lessonId]);
+    };
+    initialize();
+  }, [lessonId, searchParams]);
 
-  // Автоматичний перехід на завдання для звичайних уроків з одним завданням
+  // Перезавантажуємо урок коли user завантажиться, щоб правильно перевірити стан тесту
+  useEffect(() => {
+    if (user && lessonId && lesson && user.userMode === "EDUCATIONAL" && user.studentId) {
+      // Перезавантажуємо урок тільки для учнів, щоб отримати правильний стан тесту
+      loadLesson();
+    }
+  }, [user?.id, user?.studentId]); // Перезавантажуємо тільки коли змінюється ID користувача або studentId
+
+  // Автоматичний перехід на завдання для ЛЕГАСІ уроків з одним завданням
   useEffect(() => {
     if (lesson && user?.userMode === "EDUCATIONAL" && user?.studentId && !hasAutoRedirected) {
       // Для учнів: якщо урок має одне завдання, автоматично переходимо на нього
       // Але тільки один раз, щоб не було циклу при поверненні назад
+      // ВАЖЛИВО: тільки для старої системи (LESSON). Для TOPIC/CONTROL завжди показуємо список.
       if (lesson.type === "LESSON" && lesson.tasks.length === 1) {
         const task = lesson.tasks[0];
         setHasAutoRedirected(true);
@@ -96,6 +121,42 @@ export const LessonDetailsPage: React.FC = () => {
       }
     }
   }, [lesson, user, hasAutoRedirected, navigate]);
+
+  // Запускаємо таймер для контрольних робіт
+  useEffect(() => {
+    if (lesson && lesson.type === "CONTROL" && lesson.timeLimitMinutes !== undefined && lesson.timeLimitMinutes !== null && user?.userMode === "EDUCATIONAL" && user?.studentId && controlWorkStatus !== "COMPLETED") {
+      const initializeTimer = async () => {
+        try {
+          // Спочатку перевіряємо статус КР
+          const statusData = await getControlWorkStatus(parseInt(lessonId!, 10));
+          setControlWorkStatus(statusData.status);
+          
+          if (statusData.status === "COMPLETED") {
+            return; // КР завершена, не запускаємо таймер
+          }
+          
+          // Перевіряємо чи є активна спроба
+          const status = await getLessonAttemptStatus(parseInt(lessonId!, 10));
+          if (status.hasActiveAttempt && status.remainingSeconds > 0) {
+            setRemainingSeconds(status.remainingSeconds);
+            setControlWorkStatus("IN_PROGRESS");
+          } else {
+            // IMPORTANT: do NOT auto-start attempt just by opening the page.
+            // Student must explicitly click "Почати контрольну".
+            setRemainingSeconds(null);
+          }
+        } catch (error: any) {
+          console.error("Failed to initialize timer:", error);
+          if (error.response?.status !== 500 || error.response?.data?.message !== "DATABASE_TABLE_NOT_CREATED") {
+            if (lesson.timeLimitMinutes !== undefined && lesson.timeLimitMinutes !== null) {
+              setRemainingSeconds(lesson.timeLimitMinutes * 60);
+            }
+          }
+        }
+      };
+      initializeTimer();
+    }
+  }, [lesson, user, lessonId]);
 
   const loadUser = async () => {
     try {
@@ -109,8 +170,25 @@ export const LessonDetailsPage: React.FC = () => {
   const loadLesson = async () => {
     if (!lessonId) return;
     try {
-      const data = await getLesson(parseInt(lessonId, 10));
+      const requestedType = (searchParams.get("type") || undefined) as
+        | "TOPIC"
+        | "CONTROL"
+        | "LESSON"
+        | undefined;
+      const data = await getLesson(parseInt(lessonId, 10), requestedType);
+      console.log(`[LessonDetailsPage] Loaded lesson:`, { id: data.id, type: data.type, title: data.title, tasksCount: data.tasks?.length, tasks: data.tasks?.map(t => ({ id: t.id, title: t.title, type: t.type })) });
       setLesson(data);
+      
+      // Для контрольних робіт перевіряємо статус
+      if (data.type === "CONTROL" && user?.userMode === "EDUCATIONAL" && user?.studentId) {
+        try {
+          const statusData = await getControlWorkStatus(parseInt(lessonId, 10));
+          setControlWorkStatus(statusData.status);
+        } catch (error: any) {
+          console.error("Failed to load control work status:", error);
+        }
+      }
+      
       // Завантажуємо quiz питання якщо є
       if (data.quizJson) {
         try {
@@ -119,17 +197,48 @@ export const LessonDetailsPage: React.FC = () => {
           
           // Завантажуємо збережені відповіді учня (якщо учень)
           if (user?.userMode === "EDUCATIONAL" && user?.studentId) {
+            // Явна перевірка: тест вважається відправленим тільки якщо data.quizSubmitted === true
+            // (не undefined, не null, не 0, не пустий рядок)
+            const isQuizSubmitted = data.quizSubmitted === true;
+            
+            if (isQuizSubmitted) {
+              setStudentQuizSubmitted(true);
+              // Валідація quizGrade перед встановленням
+              if (data.quizGrade !== null && data.quizGrade !== undefined && typeof data.quizGrade === 'number') {
+                const gradeValue = Number(data.quizGrade);
+                if (!isNaN(gradeValue) && gradeValue >= 0 && gradeValue <= 12) {
+                  setStudentQuizGrade(gradeValue);
+                }
+              }
+              // Review (які відповіді правильні/неправильні) з бекенду
+              if ((data as any).quizReview) {
+                setStudentQuizReview((data as any).quizReview);
+              } else {
+                setStudentQuizReview(null);
+              }
+              // Очищаємо localStorage, щоб не показувати тест при наступному завантаженні
+              localStorage.removeItem(`quiz_answers_lesson_${lessonId}`);
+              localStorage.removeItem(`quiz_submitted_lesson_${lessonId}`);
+              localStorage.removeItem(`quiz_grade_lesson_${lessonId}`);
+            } else {
+              // Якщо не відправлений, завантажуємо збережені відповіді з localStorage
+              // Але тільки якщо на бекенді тест не відправлений
+              try {
             const savedAnswers = localStorage.getItem(`quiz_answers_lesson_${lessonId}`);
             if (savedAnswers) {
-              setStudentQuizAnswers(JSON.parse(savedAnswers));
-            }
-            const submitted = localStorage.getItem(`quiz_submitted_lesson_${lessonId}`);
-            if (submitted === "true") {
-              setStudentQuizSubmitted(true);
-              const grade = localStorage.getItem(`quiz_grade_lesson_${lessonId}`);
-              if (grade) {
-                setStudentQuizGrade(parseFloat(grade));
+                  const parsed = JSON.parse(savedAnswers);
+                  if (parsed && typeof parsed === 'object') {
+                    setStudentQuizAnswers(parsed);
+                  }
+                }
+              } catch (e) {
+                // Якщо не вдалося розпарсити, очищаємо localStorage
+                localStorage.removeItem(`quiz_answers_lesson_${lessonId}`);
               }
+              // Скидаємо стан відправки, якщо тест не відправлений на бекенді
+              setStudentQuizSubmitted(false);
+              setStudentQuizGrade(null);
+              setStudentQuizReview(null);
             }
           }
         } catch (e) {
@@ -142,7 +251,7 @@ export const LessonDetailsPage: React.FC = () => {
       console.error("Failed to load lesson:", error);
       if (error.response?.status === 404 || error.response?.status === 403) {
         // Показуємо повідомлення про помилку
-        alert(error.response?.data?.message || "Урок не знайдено");
+        alert(error.response?.data?.message || tr("Урок не знайдено", "Lesson not found"));
       }
     } finally {
       setLoading(false);
@@ -151,7 +260,7 @@ export const LessonDetailsPage: React.FC = () => {
 
   const handleCreateTask = async () => {
     if (!lessonId || !newTask.title.trim() || !newTask.description.trim() || !newTask.template.trim()) {
-      alert("Заповніть всі поля");
+      alert(tr("Заповніть всі поля", "Fill all fields"));
       return;
     }
 
@@ -162,7 +271,8 @@ export const LessonDetailsPage: React.FC = () => {
       await loadLesson();
     } catch (error: any) {
       console.error("Failed to create task:", error);
-      const errorMessage = error.response?.data?.error || error.response?.data?.message || "Не вдалося створити завдання";
+      const errorMessage =
+        error.response?.data?.error || error.response?.data?.message || tr("Не вдалося створити завдання", "Failed to create task");
       alert(errorMessage);
     }
   };
@@ -170,14 +280,14 @@ export const LessonDetailsPage: React.FC = () => {
   const handleGenerateTests = async (taskId: number, count: number) => {
     try {
       await generateTestData(taskId, count);
-      alert(`Згенеровано ${count} тестових даних`);
+      alert(tr(`Згенеровано ${count} тестових даних`, `Generated ${count} test cases`));
       await loadLesson();
       if (showTestDataModal && testDataTaskId === taskId) {
         await loadTestData(taskId);
       }
     } catch (error: any) {
       console.error("Failed to generate tests:", error);
-      alert(error.response?.data?.message || "Не вдалося згенерувати тести");
+      alert(error.response?.data?.message || tr("Не вдалося згенерувати тести", "Failed to generate tests"));
     }
   };
 
@@ -188,7 +298,7 @@ export const LessonDetailsPage: React.FC = () => {
       setTestDataList(data.testData);
     } catch (error: any) {
       console.error("Failed to load test data:", error);
-      alert(error.response?.data?.message || "Не вдалося завантажити тести");
+      alert(error.response?.data?.message || tr("Не вдалося завантажити тести", "Failed to load tests"));
     } finally {
       setLoadingTestData(false);
     }
@@ -209,20 +319,20 @@ export const LessonDetailsPage: React.FC = () => {
       setEditingTest(null);
     } catch (error: any) {
       console.error("Failed to update test:", error);
-      alert(error.response?.data?.message || "Не вдалося оновити тест");
+      alert(error.response?.data?.message || tr("Не вдалося оновити тест", "Failed to update test"));
     }
   };
 
   const handleDeleteTest = async (testDataId: number) => {
     if (!testDataTaskId) return;
-    if (!confirm("Видалити цей тест?")) return;
+    if (!confirm(tr("Видалити цей тест?", "Delete this test?"))) return;
     try {
       await deleteTestData(testDataTaskId, testDataId);
       await loadTestData(testDataTaskId);
       await loadLesson();
     } catch (error: any) {
       console.error("Failed to delete test:", error);
-      alert(error.response?.data?.message || "Не вдалося видалити тест");
+      alert(error.response?.data?.message || tr("Не вдалося видалити тест", "Failed to delete test"));
     }
   };
 
@@ -235,7 +345,7 @@ export const LessonDetailsPage: React.FC = () => {
       setEditingTest(null);
     } catch (error: any) {
       console.error("Failed to add test:", error);
-      alert(error.response?.data?.message || "Не вдалося додати тест");
+      alert(error.response?.data?.message || tr("Не вдалося додати тест", "Failed to add test"));
     }
   };
 
@@ -249,7 +359,7 @@ export const LessonDetailsPage: React.FC = () => {
       setShowTaskSettings(true);
     } catch (error: any) {
       console.error("Failed to load task:", error);
-      alert(error.response?.data?.message || "Не вдалося завантажити завдання");
+      alert(error.response?.data?.message || tr("Не вдалося завантажити завдання", "Failed to load task"));
     }
   };
 
@@ -266,7 +376,7 @@ export const LessonDetailsPage: React.FC = () => {
       setSettingsTask(null);
     } catch (error: any) {
       console.error("Failed to update task settings:", error);
-      alert(error.response?.data?.message || "Не вдалося оновити налаштування");
+      alert(error.response?.data?.message || tr("Не вдалося оновити налаштування", "Failed to update settings"));
     }
   };
 
@@ -278,14 +388,14 @@ export const LessonDetailsPage: React.FC = () => {
       setShowGrades(true);
     } catch (error) {
       console.error("Failed to load grades:", error);
-      alert("Не вдалося завантажити оцінки");
+      alert(tr("Не вдалося завантажити оцінки", "Failed to load grades"));
     }
   };
 
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center text-text-primary font-mono">
-        Завантаження...
+        {t("loading")}
       </div>
     );
   }
@@ -293,7 +403,7 @@ export const LessonDetailsPage: React.FC = () => {
   if (!lesson) {
     return (
       <div className="h-full flex items-center justify-center text-text-primary font-mono">
-        Урок не знайдено
+        {tr("Урок не знайдено", "Lesson not found")}
       </div>
     );
   }
@@ -301,33 +411,88 @@ export const LessonDetailsPage: React.FC = () => {
   return (
     <div className="h-full overflow-y-auto" style={{ height: 'calc(100vh - 4rem)' }}>
       <div className="max-w-6xl mx-auto p-6">
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={() => navigate(-1)}>
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Назад
+            {t("back")}
           </Button>
           <h1 className="text-2xl font-mono text-text-primary">{lesson.title}</h1>
           <span className="text-xs text-text-muted px-2 py-1 border border-border">
-            {lesson.type === "LESSON" ? "Урок" : "Контрольна"}
+            {lesson.type === "TOPIC"
+              ? t("topic")
+              : lesson.type === "CONTROL"
+              ? tr("Контрольна", "Control work")
+              : t("lesson")}
           </span>
+          </div>
+          {lesson.type === "CONTROL" && lesson.timeLimitMinutes !== undefined && lesson.timeLimitMinutes !== null && remainingSeconds !== null && user?.userMode === "EDUCATIONAL" && user?.studentId && (
+            <GlobalTimer
+              remainingSeconds={remainingSeconds}
+              onExpired={() => {
+                setTimeExpired(true);
+                alert(tr("Час вийшов! Ви не можете більше відправляти відповіді.", "Time is up! You can no longer submit answers."));
+              }}
+            />
+          )}
         </div>
 
         {lesson.hasTheory && lesson.theory && (
           <Card className="p-4 mb-6">
-            <h2 className="text-lg font-mono text-text-primary mb-3">Теорія</h2>
+            <h2 className="text-lg font-mono text-text-primary mb-3">{t("theory")}</h2>
             <div className="prose prose-invert max-w-none text-text-secondary font-mono text-sm">
               <MarkdownView content={lesson.theory} />
             </div>
           </Card>
         )}
 
-        {/* Quiz Generation and Display for Control Works */}
-        {lesson.type === "CONTROL" && lesson.controlHasTheory && (
+        {/* Control works inside a topic */}
+        {lesson.type === "TOPIC" && Array.isArray((lesson as any).controlWorks) && (lesson as any).controlWorks.length > 0 && (
           <Card className="p-4 mb-6">
-            <h2 className="text-lg font-mono text-text-primary mb-3">Теоретична частина (Питання)</h2>
+            <h2 className="text-lg font-mono text-text-primary mb-3">{tr("Контрольні роботи", "Control works")}</h2>
+            <div className="space-y-3">
+              {(lesson as any).controlWorks.map((cw: any) => (
+                <div key={cw.id} className="p-3 border border-border bg-bg-base flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-text-muted px-2 py-1 border border-border">{tr("Контрольна", "Control work")}</span>
+                      <div className="text-sm font-mono text-text-primary">{cw.title}</div>
+                    </div>
+                    <div className="mt-2 text-xs text-text-muted flex flex-wrap gap-3">
+                      <span>{tr("Завдань", "Tasks")}: {cw.tasksCount}</span>
+                      {cw.timeLimitMinutes ? <span>{tr("Обмеження", "Limit")}: {cw.timeLimitMinutes} {t("min")}</span> : null}
+                      {cw.deadline ? (
+                        <span>
+                          {tr("Дедлайн", "Deadline")}:{" "}
+                          {new Date(cw.deadline).toLocaleDateString(i18n.language?.toLowerCase().startsWith("en") ? "en-US" : "uk-UA")}
+                        </span>
+                      ) : null}
+                      {cw.studentGrade !== null && cw.studentGrade !== undefined && (
+                        <span className="text-text-primary">
+                          {t("grade")}: <span className="font-bold">{cw.studentGrade}</span>/12
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Button variant="ghost" onClick={() => navigate(`/edu/lessons/${cw.id}?type=CONTROL`)}>
+                    {t("open")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Quiz Generation and Display for Control Works */}
+        {/* Для учня результати тесту мають бути видимі навіть якщо КР COMPLETED */}
+        {lesson.type === "CONTROL" && lesson.controlHasTheory && (controlWorkStatus !== "COMPLETED" || studentQuizSubmitted) && (
+          <Card className="p-4 mb-6">
+            {user?.userMode === "EDUCATIONAL" && !user?.studentId && (
+            <h2 className="text-lg font-mono text-text-primary mb-3">{tr("Теоретична частина (Питання)", "Theory part (Questions)")}</h2>
+            )}
             
-            {/* Quiz Display */}
-            {lesson.quizJson && (() => {
+            {/* Quiz Display - тільки для вчителів, для учнів питання не показуються */}
+            {lesson.quizJson && !user?.studentId && (() => {
               try {
                 const quiz = JSON.parse(lesson.quizJson);
                 return (
@@ -338,22 +503,31 @@ export const LessonDetailsPage: React.FC = () => {
                           <div className="absolute top-2 right-2 flex gap-1">
                             <button
                               onClick={() => {
+                                // Нормалізуємо формат для редагування
+                                const questionText = q.question || q.q || "";
+                                const optionsObj = Array.isArray(q.options) 
+                                  ? { А: q.options[0] || "", Б: q.options[1] || "", В: q.options[2] || "", Г: q.options[3] || "", Д: q.options[4] || "" }
+                                  : (q.options || { А: "", Б: "", В: "", Г: "", Д: "" });
+                                const correctKey = typeof q.correct === 'number' 
+                                  ? ['А', 'Б', 'В', 'Г', 'Д'][q.correct] || 'А'
+                                  : (q.correct || 'А');
+                                
                                 setNewQuestion({
-                                  question: q.question,
-                                  options: { ...q.options },
-                                  correct: q.correct,
+                                  question: questionText,
+                                  options: optionsObj,
+                                  correct: correctKey as "А" | "Б" | "В" | "Г" | "Д",
                                 });
                                 setEditingQuestionIndex(index);
                                 setShowAddQuestion(true);
                               }}
                               className="text-xs p-1 h-6 w-6 border border-border hover:bg-bg-hover flex items-center justify-center"
-                              title="Редагувати питання"
+                              title={t("edit")}
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>
                             <button
                               onClick={async () => {
-                                if (!confirm("Видалити це питання?")) return;
+                                if (!confirm(tr("Видалити це питання?", "Delete this question?"))) return;
                                 try {
                                   const updatedQuiz = [...quiz];
                                   updatedQuiz.splice(index, 1);
@@ -361,29 +535,39 @@ export const LessonDetailsPage: React.FC = () => {
                                   await loadLesson();
                                 } catch (error: any) {
                                   console.error("Failed to delete question:", error);
-                                  alert("Не вдалося видалити питання");
+                                  alert(tr("Не вдалося видалити питання", "Failed to delete question"));
                                 }
                               }}
                               className="text-xs p-1 h-6 w-6 border border-border hover:bg-bg-hover flex items-center justify-center text-accent-error"
-                              title="Видалити питання"
+                              title={t("delete")}
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
                         )}
                         <div className="text-sm font-mono text-text-primary mb-2 pr-16">
-                          {index + 1}. {q.question}
+                          {index + 1}. {q.question || q.q || tr("Питання без тексту", "Question without text")}
                         </div>
                         <div className="space-y-1 text-xs text-text-secondary">
-                          {Object.entries(q.options || {}).map(([key, value]: [string, any]) => (
+                          {(Array.isArray(q.options) 
+                            ? q.options.map((opt: string, idx: number) => [['А', 'Б', 'В', 'Г', 'Д'][idx], opt])
+                            : Object.entries(q.options || {})
+                          ).map(([key, value]: [string, any], optIndex: number) => {
+                            // Перевіряємо, чи це правильна відповідь
+                            const isCorrect = typeof q.correct === 'number' 
+                              ? optIndex === q.correct
+                              : key === q.correct;
+                            
+                            return (
                             <div key={key} className="flex items-center gap-2">
                               <span className="font-mono">{key})</span>
                               <span>{value}</span>
-                              {q.correct === key && user?.userMode === "EDUCATIONAL" && !user?.studentId && (
-                                <span className="text-accent-success ml-2">✓ Правильна відповідь</span>
+                                {isCorrect && user?.userMode === "EDUCATIONAL" && !user?.studentId && (
+                                <span className="text-accent-success ml-2">{tr("✓ Правильна відповідь", "✓ Correct answer")}</span>
                               )}
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -394,6 +578,178 @@ export const LessonDetailsPage: React.FC = () => {
                 return null;
               }
             })()}
+
+            {/* Quiz Interface for Students */}
+            {user?.userMode === "EDUCATIONAL" && user?.studentId && lesson.quizJson && !studentQuizSubmitted && controlWorkStatus !== "COMPLETED" && (
+              <div className="mb-4 space-y-4">
+                {(() => {
+                  try {
+                    const quiz = JSON.parse(lesson.quizJson);
+                    return quiz.map((q: any, index: number) => (
+                      <div key={index} className="p-4 border border-border bg-bg-base">
+                        <div className="text-sm font-mono text-text-primary mb-3">
+                          {index + 1}. {q.question || q.q || tr("Питання без тексту", "Question without text")}
+                        </div>
+                        <div className="space-y-2">
+                          {(Array.isArray(q.options) 
+                            ? q.options.map((opt: string, idx: number) => [['А', 'Б', 'В', 'Г', 'Д'][idx], opt])
+                            : Object.entries(q.options || {})
+                          ).map(([key, value]: [string, any]) => (
+                            <label key={key} className="flex items-center gap-2 cursor-pointer hover:bg-bg-hover p-2 rounded">
+                              <input
+                                type="radio"
+                                name={`quiz_question_${index}`}
+                                value={key}
+                                checked={studentQuizAnswers[index] === key}
+                                onChange={(e) => {
+                                  const newAnswers = {
+                                    ...studentQuizAnswers,
+                                    [index]: key as "А" | "Б" | "В" | "Г" | "Д",
+                                  };
+                                  setStudentQuizAnswers(newAnswers);
+                                  try {
+                                    localStorage.setItem(`quiz_answers_lesson_${lessonId}`, JSON.stringify(newAnswers));
+                                  } catch (e) {
+                                    console.error("Failed to save quiz answers to localStorage:", e);
+                                  }
+                                }}
+                                className="w-4 h-4"
+                              />
+                              <span className="font-mono text-text-secondary">{key})</span>
+                              <span className="text-text-secondary">{value}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ));
+                  } catch (e) {
+                    return null;
+                  }
+                })()}
+                <div className="flex justify-end">
+                  <Button
+                    onClick={async () => {
+                      if (Object.keys(studentQuizAnswers).length < quizQuestions.length) {
+                        alert(tr("Будь ласка, відповідьте на всі питання", "Please answer all questions"));
+                        return;
+                      }
+                      try {
+                        const result = await submitQuizAnswers(parseInt(lessonId!, 10), studentQuizAnswers, true);
+                        setStudentQuizGrade(result.grade.theoryGrade);
+                        setStudentQuizSubmitted(true);
+                        if ((result as any).review) {
+                          setStudentQuizReview((result as any).review);
+                        }
+                        localStorage.setItem(`quiz_submitted_lesson_${lessonId}`, "true");
+                        localStorage.setItem(`quiz_grade_lesson_${lessonId}`, result.grade.theoryGrade.toString());
+                        
+                        // Перевіряємо чи КР завершена після відправки тесту
+                        try {
+                          const statusData = await getControlWorkStatus(parseInt(lessonId!, 10));
+                          if (statusData.status === "COMPLETED") {
+                            setControlWorkStatus("COMPLETED");
+                            alert(tr(
+                              `Контрольна робота завершена! Оцінка за тест: ${result.grade.theoryGrade}/12`,
+                              `Control work completed! Quiz grade: ${result.grade.theoryGrade}/12`
+                            ));
+                            await loadLesson(); // Перезавантажуємо урок
+                            return;
+                          }
+                        } catch (e) {
+                          console.error("Failed to check control work status:", e);
+                        }
+                        
+                        alert(
+                          tr(
+                            `Тест завершено! Оцінка: ${result.grade.theoryGrade}/12 (${result.grade.correctAnswers}/${result.grade.totalQuestions} правильних відповідей)`,
+                            `Quiz completed! Grade: ${result.grade.theoryGrade}/12 (${result.grade.correctAnswers}/${result.grade.totalQuestions} correct)`
+                          )
+                        );
+                      } catch (error: any) {
+                        console.error("Failed to submit quiz:", error);
+                        if (error.response?.status === 409 && error.response?.data?.message === "CONTROL_WORK_COMPLETED") {
+                          setControlWorkStatus("COMPLETED");
+                          alert(tr("Контрольна робота вже завершена", "Control work is already completed"));
+                          await loadLesson();
+                        } else if (error.response?.status === 409 && error.response?.data?.message === "QUIZ_ALREADY_SUBMITTED") {
+                          // Refresh from server to show submitted state + grade/review
+                          alert(tr("Тест уже відправлено. Повторна здача неможлива.", "Quiz has already been submitted. Retake is not allowed."));
+                          await loadLesson();
+                        } else {
+                          alert(error.response?.data?.message || tr("Не вдалося відправити тест", "Failed to submit quiz"));
+                        }
+                      }
+                    }}
+                    disabled={studentQuizSubmitted}
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    {t("submitTest")}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Quiz Results for Students */}
+            {user?.userMode === "EDUCATIONAL" && user?.studentId && studentQuizSubmitted && (
+              <div className="mb-4 space-y-3">
+                {studentQuizGrade !== null && (
+                  <div className="p-4 border border-accent-success bg-accent-success/10 rounded">
+                    <div className="text-lg font-mono text-accent-success mb-2">{t("testCompleted")}!</div>
+                    <div className="text-text-primary">
+                      {t("grade")}: <span className="font-bold">{studentQuizGrade}</span> {t("outOf")} 12
+                    </div>
+                  </div>
+                )}
+
+                {studentQuizReview?.questions && Array.isArray(studentQuizReview.questions) && (
+                  <div className="p-4 border border-border bg-bg-base">
+                    <div className="text-sm font-mono text-text-primary mb-3">
+                      {tr("Результати тесту", "Quiz results")}: {studentQuizReview.correctAnswers}/{studentQuizReview.totalQuestions}
+                    </div>
+                    <div className="space-y-4">
+                      {studentQuizReview.questions.map((q: any) => (
+                        <div key={q.index} className="p-3 border border-border bg-bg-surface/40">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="text-sm font-mono text-text-primary">
+                              {q.index + 1}. {q.question || tr("Питання", "Question")}
+                            </div>
+                            <div
+                              className={`text-xs font-mono px-2 py-1 border ${
+                                q.isCorrect ? "border-accent-success text-accent-success" : "border-accent-error text-accent-error"
+                              }`}
+                            >
+                              {q.isCorrect ? tr("✓ Правильно", "✓ Correct") : tr("✗ Неправильно", "✗ Incorrect")}
+                            </div>
+                          </div>
+                          <div className="mt-2 space-y-1 text-xs">
+                            {Object.entries(q.options || {}).map(([key, value]) => {
+                              const k = String(key).toUpperCase();
+                              const correct = String(q.correct || "").toUpperCase();
+                              const student = q.student ? String(q.student).toUpperCase() : null;
+                              const isCorrect = k === correct;
+                              const isStudent = student ? k === student : false;
+                              const cls = isCorrect
+                                ? "text-accent-success"
+                                : isStudent
+                                  ? "text-accent-error"
+                                  : "text-text-secondary";
+                              return (
+                                <div key={key} className={`flex items-center gap-2 ${cls}`}>
+                                  <span className="font-mono">{key})</span>
+                                  <span>{String(value)}</span>
+                                  {isCorrect && <span className="ml-2">✓</span>}
+                                  {isStudent && !isCorrect && <span className="ml-2">{tr("• ваш вибір", "• your choice")}</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Quiz Management (only for teachers) */}
             {user?.userMode === "EDUCATIONAL" && !user?.studentId && (
@@ -415,7 +771,7 @@ export const LessonDetailsPage: React.FC = () => {
                       className="text-xs"
                     >
                       <Plus className="w-4 h-4 mr-1" />
-                      Додати питання
+                      {tr("Додати питання", "Add question")}
                     </Button>
                   </div>
                 )}
@@ -426,7 +782,7 @@ export const LessonDetailsPage: React.FC = () => {
                         type="text"
                         value={quizTopicTitle}
                         onChange={(e) => setQuizTopicTitle(e.target.value)}
-                        placeholder="Назва теми для генерації питань"
+                        placeholder={tr("Назва теми для генерації питань", "Topic for generating questions")}
                         className="flex-1 px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary"
                       />
                       <input
@@ -435,25 +791,25 @@ export const LessonDetailsPage: React.FC = () => {
                         max="50"
                         value={quizCount}
                         onChange={(e) => setQuizCount(parseInt(e.target.value) || 12)}
-                        placeholder="Кількість"
+                        placeholder={tr("Кількість", "Count")}
                         className="w-24 px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary"
                       />
                       <Button
                         variant="ghost"
                         onClick={async () => {
                           if (!lessonId || !quizTopicTitle.trim()) {
-                            alert("Введіть назву теми");
+                            alert(tr("Введіть назву теми", "Enter a topic"));
                             return;
                           }
                           setGeneratingQuiz(true);
                           try {
                             const result = await generateQuiz(parseInt(lessonId, 10), quizCount, quizTopicTitle);
-                            alert(`Згенеровано ${result.count} питань`);
+                            alert(tr(`Згенеровано ${result.count} питань`, `Generated ${result.count} questions`));
                             setQuizTopicTitle("");
                             await loadLesson();
                           } catch (error: any) {
                             console.error("Failed to generate quiz:", error);
-                            alert(error.response?.data?.message || "Не вдалося згенерувати питання");
+                            alert(error.response?.data?.message || tr("Не вдалося згенерувати питання", "Failed to generate questions"));
                           } finally {
                             setGeneratingQuiz(false);
                           }
@@ -462,11 +818,14 @@ export const LessonDetailsPage: React.FC = () => {
                         className="text-xs"
                       >
                         <Sparkles className="w-4 h-4 mr-1" />
-                        {generatingQuiz ? "Генерація..." : "Згенерувати"}
+                        {generatingQuiz ? tr("Генерація...", "Generating...") : tr("Згенерувати", "Generate")}
                       </Button>
                     </div>
                     <p className="text-xs text-text-muted">
-                      Згенеруйте питання для теоретичної частини контрольної роботи
+                      {tr(
+                        "Згенеруйте питання для теоретичної частини контрольної роботи",
+                        "Generate questions for the theory part of the control work"
+                      )}
                     </p>
                   </>
                 )}
@@ -475,23 +834,79 @@ export const LessonDetailsPage: React.FC = () => {
           </Card>
         )}
 
+        {/* Повідомлення про завершену КР */}
+        {lesson.type === "CONTROL" && controlWorkStatus === "COMPLETED" && (
+          <Card className="p-4 mb-6 border-accent-success">
+            <div className="text-lg font-mono text-accent-success mb-2">
+              {tr("Контрольна робота завершена", "Control work completed")}
+            </div>
+            <div className="text-text-secondary">
+              {tr(
+                "Ви вже завершили цю контрольну роботу. Результати доступні в журналі.",
+                "You have already completed this control work. Results are available in the gradebook."
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* Start control work (students) */}
+        {lesson.type === "CONTROL" &&
+          user?.userMode === "EDUCATIONAL" &&
+          user?.studentId &&
+          controlWorkStatus === "NOT_STARTED" &&
+          lesson.timeLimitMinutes !== undefined &&
+          lesson.timeLimitMinutes !== null && (
+            <Card className="p-4 mb-6 border-primary/40">
+              <div className="text-lg font-mono text-text-primary mb-2">{tr("Контрольна ще не розпочата", "Control work not started")}</div>
+              <div className="text-text-secondary mb-3">
+                {tr(
+                  "Натисніть «Почати контрольну», щоб запустити таймер. Після старту час піде одразу.",
+                  "Click “Start control work” to start the timer. Time starts immediately after you start."
+                )}
+              </div>
+              <Button
+                onClick={async () => {
+                  try {
+                    const attempt = await startLessonAttempt(parseInt(lessonId!, 10));
+                    setRemainingSeconds(attempt.remainingSeconds);
+                    setControlWorkStatus("IN_PROGRESS");
+                  } catch (error: any) {
+                    console.error("Failed to start attempt:", error);
+                    if (error.response?.status === 409 && error.response?.data?.message === "CONTROL_WORK_COMPLETED") {
+                      setControlWorkStatus("COMPLETED");
+                    } else {
+                      alert(error.response?.data?.message || tr("Не вдалося почати контрольну", "Failed to start control work"));
+                    }
+                  }
+                }}
+              >
+                {tr("Почати контрольну", "Start control work")}
+              </Button>
+            </Card>
+          )}
+
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-mono text-text-primary">
-            {lesson.type === "LESSON" ? "Завдання" : "Завдання"} ({lesson.tasks.length})
+            {t("tasks")} ({lesson.tasks.length})
           </h2>
           {user?.userMode === "EDUCATIONAL" && !user?.studentId && (
             <Button 
               onClick={() => {
                 // Для звичайних уроків перевіряємо, чи вже є завдання
                 if (lesson.type === "LESSON" && lesson.tasks.length > 0) {
-                  alert("Звичайний урок може мати тільки одне завдання. Видаліть існуюче завдання або створіть контрольну роботу для множинних завдань.");
+                  alert(
+                    tr(
+                      "Звичайний урок може мати тільки одне завдання. Видаліть існуюче завдання або створіть контрольну роботу для множинних завдань.",
+                      "A regular lesson can have only one task. Delete the existing task or create a control work for multiple tasks."
+                    )
+                  );
                   return;
                 }
                 setShowCreateTask(true);
               }}
             >
               <Plus className="w-4 h-4 mr-2" />
-              Додати завдання
+              {t("addTask")}
             </Button>
           )}
         </div>
@@ -499,19 +914,57 @@ export const LessonDetailsPage: React.FC = () => {
         <div className="space-y-3">
           {lesson.tasks.length === 0 ? (
             <Card className="p-8 text-center">
-              <p className="text-text-secondary">Немає завдань</p>
+              <p className="text-text-secondary">{t("noTasks")}</p>
+            </Card>
+          ) : controlWorkStatus === "COMPLETED" ? (
+            <Card className="p-8 text-center">
+              <p className="text-text-secondary">{tr("Контрольна робота завершена", "Control work completed")}</p>
             </Card>
           ) : (
-            lesson.tasks.map((task) => (
-              <Card key={task.id} className="p-4">
+            lesson.tasks.map((task) => {
+              const isExpired = task.deadline && isDeadlineExpired(task.deadline);
+              const hasGrade = task.hasGrade || false;
+              // ВАЖЛИВО: Не показуємо "Протерміновано", якщо завдання вже виконане
+              const showOverdue = isExpired && !hasGrade;
+              // Визначаємо, чи показувати кнопку "Виконати" або "Переглянути"
+              // Показуємо "Переглянути", якщо є оцінка або завдання протерміновано і не виконано
+              const showViewButton = hasGrade || showOverdue;
+              
+              return (
+              <Card key={task.id} className={`p-4 ${showOverdue ? 'border-accent-error/50 bg-accent-error/5' : ''}`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h3 className="text-lg font-mono text-text-primary mb-2">{task.title}</h3>
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="text-lg font-mono text-text-primary">{task.title}</h3>
+                      {showOverdue && (
+                        <span className="text-xs px-2 py-1 bg-accent-error/20 text-accent-error border border-accent-error/30 rounded flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {t("expired")}
+                        </span>
+                      )}
+                      {task.deadline && !isExpired && (
+                        <span className="text-xs px-2 py-1 bg-bg-hover text-text-secondary border border-border rounded flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {t("until")}{" "}
+                          {new Date(task.deadline).toLocaleDateString(i18n.language?.toLowerCase().startsWith("en") ? "en-US" : "uk-UA")}
+                        </span>
+                      )}
+                      {hasGrade && task.grade && (
+                        <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
+                          task.grade.total >= 10 ? 'bg-accent-success/20 text-accent-success border border-accent-success/30' :
+                          task.grade.total >= 7 ? 'bg-accent-warn/20 text-accent-warn border border-accent-warn/30' :
+                          task.grade.total >= 4 ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30' :
+                          'bg-accent-error/20 text-accent-error border border-accent-error/30'
+                        }`}>
+                          {t("grade")}: {task.grade.total}/12
+                        </span>
+                      )}
+                    </div>
                     <div className="text-sm text-text-secondary mb-2 line-clamp-2">
                       {task.description}
                     </div>
                     <div className="text-xs text-text-muted">
-                      Тестів: {task.testDataCount}
+                      {t("tests")}: {task.testDataCount || 0}
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -523,7 +976,7 @@ export const LessonDetailsPage: React.FC = () => {
                           className="text-xs"
                         >
                           <Users className="w-4 h-4 mr-1" />
-                          Оцінки
+                          {t("grades")}
                         </Button>
                         <Button
                           variant="ghost"
@@ -531,7 +984,7 @@ export const LessonDetailsPage: React.FC = () => {
                           className="text-xs"
                         >
                           <FileText className="w-4 h-4 mr-1" />
-                          Тести ({task.testDataCount})
+                          {t("tests")} ({task.testDataCount || 0})
                         </Button>
                         <Button
                           variant="ghost"
@@ -539,25 +992,35 @@ export const LessonDetailsPage: React.FC = () => {
                           className="text-xs"
                         >
                           <Settings className="w-4 h-4 mr-1" />
-                          Налаштування
+                          {t("settings")}
                         </Button>
                       </>
                     ) : (
                       <Button
-                        variant="primary"
+                        variant={showViewButton ? "ghost" : "primary"}
                         onClick={() => {
                           window.location.href = `/edu/tasks/${task.id}`;
                         }}
                         className="text-xs"
                       >
-                        <Play className="w-4 h-4 mr-1" />
-                        Виконати
+                        {showViewButton ? (
+                          <>
+                            <FileText className="w-4 h-4 mr-1" />
+                            {tr("Переглянути", "View")}
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4 mr-1" />
+                            {t("execute")}
+                          </>
+                        )}
                       </Button>
                     )}
                   </div>
                 </div>
               </Card>
-            ))
+            );
+            })
           )}
         </div>
       </div>
@@ -567,15 +1030,15 @@ export const LessonDetailsPage: React.FC = () => {
         <Modal 
           open={showCreateTask}
           onClose={() => setShowCreateTask(false)}
-          title="Створити завдання"
+          title={tr("Створити завдання", "Create task")}
           showCloseButton={false}
         >
           <div className="p-6 max-w-3xl max-h-[80vh] overflow-y-auto">
-            <h2 className="text-xl font-mono text-text-primary mb-4">Створити завдання</h2>
+            <h2 className="text-xl font-mono text-text-primary mb-4">{tr("Створити завдання", "Create task")}</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-mono text-text-secondary mb-2">
-                  Назва завдання *
+                  {tr("Назва завдання", "Task title")} *
                 </label>
                 <input
                   type="text"
@@ -586,7 +1049,7 @@ export const LessonDetailsPage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-mono text-text-secondary mb-2">
-                  Опис завдання (Markdown) *
+                  {tr("Опис завдання (Markdown)", "Task description (Markdown)")} *
                 </label>
                 <textarea
                   value={newTask.description}
@@ -596,7 +1059,7 @@ export const LessonDetailsPage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-mono text-text-secondary mb-2">
-                  Шаблон коду *
+                  {tr("Шаблон коду", "Code template")} *
                 </label>
                 <textarea
                   value={newTask.template}
@@ -606,9 +1069,9 @@ export const LessonDetailsPage: React.FC = () => {
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="ghost" onClick={() => setShowCreateTask(false)}>
-                  Скасувати
+                  {t("cancel")}
                 </Button>
-                <Button onClick={handleCreateTask}>Створити</Button>
+                <Button onClick={handleCreateTask}>{t("create")}</Button>
               </div>
             </div>
           </div>
@@ -628,26 +1091,30 @@ export const LessonDetailsPage: React.FC = () => {
               correct: "А",
             });
           }}
-          title={editingQuestionIndex !== null ? "Редагувати питання" : "Додати питання"}
+          title={
+            editingQuestionIndex !== null
+              ? tr("Редагувати питання", "Edit question")
+              : tr("Додати питання", "Add question")
+          }
           showCloseButton={false}
         >
           <div className="p-6 max-w-2xl max-h-[80vh] overflow-y-auto">
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-mono text-text-secondary mb-2">
-                  Питання *
+                  {tr("Питання", "Question")} *
                 </label>
                 <textarea
                   value={newQuestion.question}
                   onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })}
-                  placeholder="Введіть текст питання"
+                  placeholder={tr("Введіть текст питання", "Enter question text")}
                   className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary resize-none"
                   rows={3}
                 />
               </div>
               <div>
                 <label className="block text-sm font-mono text-text-secondary mb-2">
-                  Варіанти відповідей *
+                  {tr("Варіанти відповідей", "Answer options")} *
                 </label>
                 <div className="space-y-2">
                   {Object.entries(newQuestion.options).map(([key, value]) => (
@@ -662,7 +1129,7 @@ export const LessonDetailsPage: React.FC = () => {
                             options: { ...newQuestion.options, [key]: e.target.value },
                           })
                         }
-                        placeholder={`Варіант ${key}`}
+                        placeholder={tr(`Варіант ${key}`, `Option ${key}`)}
                         className="flex-1 px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary"
                       />
                       <input
@@ -672,7 +1139,7 @@ export const LessonDetailsPage: React.FC = () => {
                         onChange={() => setNewQuestion({ ...newQuestion, correct: key as "А" | "Б" | "В" | "Г" | "Д" })}
                         className="w-4 h-4"
                       />
-                      <span className="text-xs text-text-muted">Правильна</span>
+                      <span className="text-xs text-text-muted">{tr("Правильна", "Correct")}</span>
                     </div>
                   ))}
                 </div>
@@ -691,16 +1158,16 @@ export const LessonDetailsPage: React.FC = () => {
                   });
                 }}
               >
-                Скасувати
+                {t("cancel")}
               </Button>
               <Button
                 onClick={async () => {
                   if (!newQuestion.question.trim()) {
-                    alert("Введіть текст питання");
+                    alert(tr("Введіть текст питання", "Enter question text"));
                     return;
                   }
                   if (Object.values(newQuestion.options).some((v) => !v.trim())) {
-                    alert("Заповніть всі варіанти відповідей");
+                    alert(tr("Заповніть всі варіанти відповідей", "Fill all answer options"));
                     return;
                   }
                   try {
@@ -709,10 +1176,18 @@ export const LessonDetailsPage: React.FC = () => {
                       : [];
                     const updatedQuiz = [...currentQuiz];
                     
+                    // Нормалізуємо формат питання перед збереженням
+                    const optionKeys: ("А" | "Б" | "В" | "Г" | "Д")[] = ['А', 'Б', 'В', 'Г', 'Д'];
+                    const normalizedQuestion = {
+                      q: newQuestion.question.trim(),
+                      options: optionKeys.map((key) => newQuestion.options[key] || ''),
+                      correct: optionKeys.indexOf(newQuestion.correct),
+                    };
+                    
                     if (editingQuestionIndex !== null) {
-                      updatedQuiz[editingQuestionIndex] = newQuestion;
+                      updatedQuiz[editingQuestionIndex] = normalizedQuestion;
                     } else {
-                      updatedQuiz.push(newQuestion);
+                      updatedQuiz.push(normalizedQuestion);
                     }
                     
                     await saveQuiz(parseInt(lessonId!, 10), updatedQuiz);
@@ -726,11 +1201,11 @@ export const LessonDetailsPage: React.FC = () => {
                     });
                   } catch (error: any) {
                     console.error("Failed to save question:", error);
-                    alert(error.response?.data?.message || "Не вдалося зберегти питання");
+                    alert(error.response?.data?.message || tr("Не вдалося зберегти питання", "Failed to save question"));
                   }
                 }}
               >
-                {editingQuestionIndex !== null ? "Зберегти зміни" : "Додати питання"}
+                {editingQuestionIndex !== null ? tr("Зберегти зміни", "Save changes") : tr("Додати питання", "Add question")}
               </Button>
             </div>
           </div>
@@ -742,11 +1217,11 @@ export const LessonDetailsPage: React.FC = () => {
         <Modal 
           open={showGrades}
           onClose={() => setShowGrades(false)}
-          title="Оцінки учнів"
+          title={tr("Оцінки учнів", "Student grades")}
           showCloseButton={false}
         >
           <div className="p-6 max-w-4xl max-h-[80vh] overflow-y-auto">
-            <h2 className="text-xl font-mono text-text-primary mb-4">Оцінки учнів</h2>
+            <h2 className="text-xl font-mono text-text-primary mb-4">{tr("Оцінки учнів", "Student grades")}</h2>
             <div className="space-y-2">
               {grades.map((item, index) => (
                 <div
@@ -771,25 +1246,25 @@ export const LessonDetailsPage: React.FC = () => {
                           }`}>
                             {item.grade.total}
                           </div>
-                          <div className="text-xs text-text-muted">з 12</div>
+                          <div className="text-xs text-text-muted">{t("outOf")} 12</div>
                         </div>
                       <Button
                         variant="ghost"
                         onClick={() => window.location.href = `/edu/grades/${item.grade.id}`}
                         className="text-xs"
                       >
-                        Деталі
+                        {tr("Деталі", "Details")}
                       </Button>
                       </>
                     ) : (
-                      <span className="text-xs text-text-muted">Немає оцінки</span>
+                      <span className="text-xs text-text-muted">{tr("Немає оцінки", "No grade")}</span>
                     )}
                   </div>
                 </div>
               ))}
             </div>
             <div className="flex justify-end mt-4">
-              <Button onClick={() => setShowGrades(false)}>Закрити</Button>
+              <Button onClick={() => setShowGrades(false)}>{t("close")}</Button>
             </div>
           </div>
         </Modal>
@@ -806,12 +1281,12 @@ export const LessonDetailsPage: React.FC = () => {
             setEditingTestIndex(null);
             setEditingTest(null);
           }}
-          title="Управління тестами"
+          title={tr("Управління тестами", "Test management")}
           showCloseButton={false}
         >
           <div className="p-6 max-w-4xl max-h-[80vh] overflow-y-auto">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-mono text-text-primary">Тестові дані</h2>
+              <h2 className="text-xl font-mono text-text-primary">{tr("Тестові дані", "Test data")}</h2>
               <div className="flex gap-2">
                 <input
                   type="number"
@@ -827,7 +1302,7 @@ export const LessonDetailsPage: React.FC = () => {
                   className="text-xs"
                 >
                   <Sparkles className="w-4 h-4 mr-1" />
-                  Згенерувати {newTestCount}
+                  {tr("Згенерувати", "Generate")} {newTestCount}
                 </Button>
                 <Button
                   variant="ghost"
@@ -838,14 +1313,14 @@ export const LessonDetailsPage: React.FC = () => {
                   className="text-xs"
                 >
                   <Plus className="w-4 h-4 mr-1" />
-                  Додати вручну
+                  {tr("Додати вручну", "Add manually")}
                 </Button>
               </div>
             </div>
 
             {loadingTestData ? (
               <div className="text-center py-8 text-text-secondary font-mono">
-                Завантаження...
+                {t("loading")}
               </div>
             ) : (
               <div className="space-y-3">
@@ -854,7 +1329,7 @@ export const LessonDetailsPage: React.FC = () => {
                   <Card className="p-4 border-2 border-primary">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-mono text-text-primary">Новий тест</h3>
+                        <h3 className="text-sm font-mono text-text-primary">{tr("Новий тест", "New test")}</h3>
                         <Button
                           variant="ghost"
                           onClick={() => {
@@ -868,30 +1343,30 @@ export const LessonDetailsPage: React.FC = () => {
                       </div>
                       <div>
                         <label className="block text-xs font-mono text-text-secondary mb-1">
-                          Вхідні дані
+                          {tr("Вхідні дані", "Input")}
                         </label>
                         <textarea
                           value={editingTest?.input || ""}
                           onChange={(e) => setEditingTest({ ...editingTest!, input: e.target.value })}
-                          placeholder="Наприклад: 5 10"
+                          placeholder={tr("Наприклад: 5 10", "Example: 5 10")}
                           className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary min-h-[80px] resize-y"
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-mono text-text-secondary mb-1">
-                          Очікуваний вивід
+                          {tr("Очікуваний вивід", "Expected output")}
                         </label>
                         <textarea
                           value={editingTest?.expectedOutput || ""}
                           onChange={(e) => setEditingTest({ ...editingTest!, expectedOutput: e.target.value })}
-                          placeholder="Наприклад: 15"
+                          placeholder={tr("Наприклад: 15", "Example: 15")}
                           className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary min-h-[80px] resize-y"
                         />
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="flex-1">
                           <label className="block text-xs font-mono text-text-secondary mb-1">
-                            Бали (1-12)
+                            {tr("Бали", "Points")} (1-12)
                           </label>
                           <input
                             type="number"
@@ -908,7 +1383,7 @@ export const LessonDetailsPage: React.FC = () => {
                           className="text-xs"
                         >
                           <Plus className="w-4 h-4 mr-1" />
-                          Додати
+                          {t("add")}
                         </Button>
                       </div>
                     </div>
@@ -918,9 +1393,12 @@ export const LessonDetailsPage: React.FC = () => {
                 {/* Список існуючих тестів */}
                 {testDataList.length === 0 ? (
                   <Card className="p-8 text-center">
-                    <p className="text-text-secondary mb-4">Немає тестових даних</p>
+                    <p className="text-text-secondary mb-4">{tr("Немає тестових даних", "No test data")}</p>
                     <p className="text-xs text-text-muted">
-                      Згенеруйте тести автоматично або додайте їх вручну
+                      {tr(
+                        "Згенеруйте тести автоматично або додайте їх вручну",
+                        "Generate tests automatically or add them manually"
+                      )}
                     </p>
                   </Card>
                 ) : (
@@ -930,30 +1408,30 @@ export const LessonDetailsPage: React.FC = () => {
                         <div className="space-y-3">
                           <div>
                             <label className="block text-xs font-mono text-text-secondary mb-1">
-                              Вхідні дані
+                              {tr("Вхідні дані", "Input")}
                             </label>
                             <textarea
                               value={editingTest?.input || ""}
                               onChange={(e) => setEditingTest({ ...editingTest!, input: e.target.value })}
-                              placeholder="Наприклад: 5 10"
+                              placeholder={tr("Наприклад: 5 10", "Example: 5 10")}
                               className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary min-h-[80px] resize-y"
                             />
                           </div>
                           <div>
                             <label className="block text-xs font-mono text-text-secondary mb-1">
-                              Очікуваний вивід
+                              {tr("Очікуваний вивід", "Expected output")}
                             </label>
                             <textarea
                               value={editingTest?.expectedOutput || ""}
                               onChange={(e) => setEditingTest({ ...editingTest!, expectedOutput: e.target.value })}
-                              placeholder="Наприклад: 15"
+                              placeholder={tr("Наприклад: 15", "Example: 15")}
                               className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary min-h-[80px] resize-y"
                             />
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="flex-1">
                               <label className="block text-xs font-mono text-text-secondary mb-1">
-                                Бали (1-12)
+                                {tr("Бали", "Points")} (1-12)
                               </label>
                               <input
                                 type="number"
@@ -980,7 +1458,7 @@ export const LessonDetailsPage: React.FC = () => {
                               className="text-xs"
                             >
                               <Save className="w-4 h-4 mr-1" />
-                              Зберегти
+                              {t("save")}
                             </Button>
                           </div>
                         </div>
@@ -988,41 +1466,39 @@ export const LessonDetailsPage: React.FC = () => {
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 space-y-2">
                             <div>
-                              <span className="text-xs font-mono text-text-muted">Вхід:</span>
+                              <span className="text-xs font-mono text-text-muted">{tr("Вхід", "Input")}:</span>
                               <pre className="text-xs font-mono text-text-secondary bg-bg-code p-2 rounded mt-1 whitespace-pre-wrap">
                                 {test.input}
                               </pre>
                             </div>
                             <div>
-                              <span className="text-xs font-mono text-text-muted">Очікуваний вивід:</span>
+                              <span className="text-xs font-mono text-text-muted">{tr("Очікуваний вивід", "Expected output")}:</span>
                               <pre className="text-xs font-mono text-text-secondary bg-bg-code p-2 rounded mt-1 whitespace-pre-wrap">
                                 {test.expectedOutput}
                               </pre>
                             </div>
                             <div className="text-xs font-mono text-text-muted">
-                              Бали: <span className="text-text-primary">{test.points}</span>
+                              {tr("Бали", "Points")}: <span className="text-text-primary">{test.points}</span>
                             </div>
                           </div>
-                          <div className="flex gap-1">
-                            <Button
-                              variant="ghost"
+                          <div className="flex gap-2">
+                            <button
                               onClick={() => {
                                 setEditingTestIndex(index);
                                 setEditingTest({ input: test.input, expectedOutput: test.expectedOutput, points: test.points });
                               }}
-                              className="text-xs p-1 h-6 w-6"
-                              title="Редагувати"
+                              className="p-2 h-8 w-8 flex items-center justify-center border border-border bg-bg-surface hover:bg-bg-hover hover:border-primary transition-fast"
+                              title={t("edit")}
                             >
-                              <Edit2 className="w-3 h-3" />
-                            </Button>
-                            <Button
-                              variant="ghost"
+                              <Edit2 className="w-4 h-4 text-primary" />
+                            </button>
+                            <button
                               onClick={() => handleDeleteTest(test.id)}
-                              className="text-xs p-1 h-6 w-6"
-                              title="Видалити"
+                              className="p-2 h-8 w-8 flex items-center justify-center border border-border bg-bg-surface hover:bg-bg-hover hover:border-accent-error transition-fast"
+                              title={t("delete")}
                             >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
+                              <Trash2 className="w-4 h-4 text-accent-error" />
+                            </button>
                           </div>
                         </div>
                       )}
@@ -1043,7 +1519,7 @@ export const LessonDetailsPage: React.FC = () => {
             setShowTaskSettings(false);
             setSettingsTask(null);
           }}
-          title="Налаштування завдання"
+          title={tr("Налаштування завдання", "Task settings")}
           showCloseButton={false}
         >
           <div className="p-6 max-w-2xl">
@@ -1051,7 +1527,7 @@ export const LessonDetailsPage: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-mono text-text-secondary mb-2">
-                  Кількість спроб (мінімум 1)
+                  {tr("Кількість спроб (мінімум 1)", "Attempts (min 1)")}
                 </label>
                 <input
                   type="number"
@@ -1061,13 +1537,13 @@ export const LessonDetailsPage: React.FC = () => {
                   className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono focus:outline-none focus:border-primary"
                 />
                 <p className="text-xs text-text-muted mt-1">
-                  Скільки разів учень може відправити код на перевірку
+                  {tr("Скільки разів учень може відправити код на перевірку", "How many times a student can submit code for checking")}
                 </p>
               </div>
 
               <div>
                 <label className="block text-sm font-mono text-text-secondary mb-2">
-                  Дедлайн (необов'язково)
+                  {tr("Дедлайн (необов'язково)", "Deadline (optional)")}
                 </label>
                 <input
                   type="datetime-local"
@@ -1076,7 +1552,7 @@ export const LessonDetailsPage: React.FC = () => {
                   className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono focus:outline-none focus:border-primary"
                 />
                 <p className="text-xs text-text-muted mt-1">
-                  Після цієї дати учень не зможе відправити код
+                  {tr("Після цієї дати учень не зможе відправити код", "After this date, the student cannot submit code")}
                 </p>
                 {taskDeadline && (
                   <Button
@@ -1085,7 +1561,7 @@ export const LessonDetailsPage: React.FC = () => {
                     className="text-xs mt-2"
                   >
                     <X className="w-3 h-3 mr-1" />
-                    Прибрати дедлайн
+                    {tr("Прибрати дедлайн", "Remove deadline")}
                   </Button>
                 )}
               </div>
@@ -1098,10 +1574,13 @@ export const LessonDetailsPage: React.FC = () => {
                     onChange={(e) => setTaskIsClosed(e.target.checked)}
                     className="w-4 h-4"
                   />
-                  Завдання закрите для відправок
+                  {tr("Завдання закрите для відправок", "Task is closed for submissions")}
                 </label>
                 <p className="text-xs text-text-muted mt-1">
-                  Якщо увімкнено, учень не зможе відправити код, навіть якщо є спроби та дедлайн не пройшов
+                  {tr(
+                    "Якщо увімкнено, учень не зможе відправити код, навіть якщо є спроби та дедлайн не пройшов",
+                    "If enabled, the student cannot submit code even if attempts remain and the deadline hasn’t passed"
+                  )}
                 </p>
               </div>
 
@@ -1113,13 +1592,13 @@ export const LessonDetailsPage: React.FC = () => {
                     setSettingsTask(null);
                   }}
                 >
-                  Скасувати
+                  {t("cancel")}
                 </Button>
                 <Button
                   variant="primary"
                   onClick={handleSaveTaskSettings}
                 >
-                  Зберегти
+                  {t("save")}
                 </Button>
               </div>
             </div>
@@ -1131,219 +1610,4 @@ export const LessonDetailsPage: React.FC = () => {
 };
 
 export default LessonDetailsPage;
-
-                {/* Список існуючих тестів */}
-                {testDataList.length === 0 ? (
-                  <Card className="p-8 text-center">
-                    <p className="text-text-secondary mb-4">Немає тестових даних</p>
-                    <p className="text-xs text-text-muted">
-                      Згенеруйте тести автоматично або додайте їх вручну
-                    </p>
-                  </Card>
-                ) : (
-                  testDataList.map((test, index) => (
-                    <Card key={test.id} className="p-4">
-                      {editingTestIndex === index ? (
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-mono text-text-secondary mb-1">
-                              Вхідні дані
-                            </label>
-                            <textarea
-                              value={editingTest?.input || ""}
-                              onChange={(e) => setEditingTest({ ...editingTest!, input: e.target.value })}
-                              placeholder="Наприклад: 5 10"
-                              className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary min-h-[80px] resize-y"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-mono text-text-secondary mb-1">
-                              Очікуваний вивід
-                            </label>
-                            <textarea
-                              value={editingTest?.expectedOutput || ""}
-                              onChange={(e) => setEditingTest({ ...editingTest!, expectedOutput: e.target.value })}
-                              placeholder="Наприклад: 15"
-                              className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary min-h-[80px] resize-y"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1">
-                              <label className="block text-xs font-mono text-text-secondary mb-1">
-                                Бали (1-12)
-                              </label>
-                              <input
-                                type="number"
-                                min="1"
-                                max="12"
-                                value={editingTest?.points || 1}
-                                onChange={(e) => setEditingTest({ ...editingTest!, points: parseInt(e.target.value) || 1 })}
-                                className="w-full px-2 py-1 bg-bg-surface border border-border text-text-primary font-mono text-sm focus:outline-none focus:border-primary"
-                              />
-                            </div>
-                            <Button
-                              variant="ghost"
-                              onClick={() => {
-                                setEditingTestIndex(null);
-                                setEditingTest(null);
-                              }}
-                              className="text-xs"
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="primary"
-                              onClick={() => handleSaveTest(test.id, index)}
-                              className="text-xs"
-                            >
-                              <Save className="w-4 h-4 mr-1" />
-                              Зберегти
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 space-y-2">
-                            <div>
-                              <span className="text-xs font-mono text-text-muted">Вхід:</span>
-                              <pre className="text-xs font-mono text-text-secondary bg-bg-code p-2 rounded mt-1 whitespace-pre-wrap">
-                                {test.input}
-                              </pre>
-                            </div>
-                            <div>
-                              <span className="text-xs font-mono text-text-muted">Очікуваний вивід:</span>
-                              <pre className="text-xs font-mono text-text-secondary bg-bg-code p-2 rounded mt-1 whitespace-pre-wrap">
-                                {test.expectedOutput}
-                              </pre>
-                            </div>
-                            <div className="text-xs font-mono text-text-muted">
-                              Бали: <span className="text-text-primary">{test.points}</span>
-                            </div>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button
-                              variant="ghost"
-                              onClick={() => {
-                                setEditingTestIndex(index);
-                                setEditingTest({ input: test.input, expectedOutput: test.expectedOutput, points: test.points });
-                              }}
-                              className="text-xs p-1 h-6 w-6"
-                              title="Редагувати"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              onClick={() => handleDeleteTest(test.id)}
-                              className="text-xs p-1 h-6 w-6"
-                              title="Видалити"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </Card>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
-
-      {/* Task Settings Modal */}
-      {showTaskSettings && settingsTask && (
-        <Modal
-          open={showTaskSettings}
-          onClose={() => {
-            setShowTaskSettings(false);
-            setSettingsTask(null);
-          }}
-          title="Налаштування завдання"
-          showCloseButton={false}
-        >
-          <div className="p-6 max-w-2xl">
-            <h2 className="text-xl font-mono text-text-primary mb-4">{settingsTask.title}</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-mono text-text-secondary mb-2">
-                  Кількість спроб (мінімум 1)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={taskMaxAttempts}
-                  onChange={(e) => setTaskMaxAttempts(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono focus:outline-none focus:border-primary"
-                />
-                <p className="text-xs text-text-muted mt-1">
-                  Скільки разів учень може відправити код на перевірку
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-mono text-text-secondary mb-2">
-                  Дедлайн (необов'язково)
-                </label>
-                <input
-                  type="datetime-local"
-                  value={taskDeadline}
-                  onChange={(e) => setTaskDeadline(e.target.value)}
-                  className="w-full px-3 py-2 bg-bg-surface border border-border text-text-primary font-mono focus:outline-none focus:border-primary"
-                />
-                <p className="text-xs text-text-muted mt-1">
-                  Після цієї дати учень не зможе відправити код
-                </p>
-                {taskDeadline && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => setTaskDeadline("")}
-                    className="text-xs mt-2"
-                  >
-                    <X className="w-3 h-3 mr-1" />
-                    Прибрати дедлайн
-                  </Button>
-                )}
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm font-mono text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={taskIsClosed}
-                    onChange={(e) => setTaskIsClosed(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  Завдання закрите для відправок
-                </label>
-                <p className="text-xs text-text-muted mt-1">
-                  Якщо увімкнено, учень не зможе відправити код, навіть якщо є спроби та дедлайн не пройшов
-                </p>
-              </div>
-
-              <div className="flex gap-2 justify-end mt-6">
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setShowTaskSettings(false);
-                    setSettingsTask(null);
-                  }}
-                >
-                  Скасувати
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleSaveTaskSettings}
-                >
-                  Зберегти
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-};
 

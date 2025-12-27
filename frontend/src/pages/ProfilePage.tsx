@@ -1,5 +1,6 @@
 
 import React, { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { User, CourseLanguage } from "../types";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -12,6 +13,8 @@ interface Props {
 }
 
 export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
+  const { t, i18n } = useTranslation();
+  const tr = (uk: string, en: string) => (i18n.language?.toLowerCase().startsWith("en") ? en : uk);
   const isStudent = !!user.studentId;
   const isEducational = user.userMode === "EDUCATIONAL";
   const [course, setCourse] = useState<CourseLanguage>(user.course);
@@ -24,7 +27,7 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
   const handleFile = useCallback((file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setMsg("Підтримуються лише зображення (png/jpg).");
+      setMsg(tr("Підтримуються лише зображення (png/jpg).", "Only images are supported (png/jpg)."));
       return;
     }
     const reader = new FileReader();
@@ -50,7 +53,7 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
   const handleSave = async () => {
     if (isEducational && !isStudent) {
       // Вчителі не можуть змінювати профіль
-      setMsg("Вчителі не можуть змінювати профіль через цей інтерфейс.");
+      setMsg(t('teachersCannotChangeProfile'));
       return;
     }
     setSaving(true);
@@ -62,9 +65,9 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
         avatarData: avatarData ?? null,
       });
       onUserChange(updated);
-      setMsg("Зміни збережено.");
+      setMsg(t('changesSaved'));
     } catch (err: any) {
-      setMsg(err?.response?.data?.message ?? "Помилка збереження профілю");
+      setMsg(err?.response?.data?.message ?? t('profileSaveError'));
     } finally {
       setSaving(false);
     }
@@ -74,7 +77,7 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
     <div className="h-screen flex flex-col bg-bg-base">
       {/* Header */}
       <div className="border-b border-border bg-bg-surface p-4 flex items-center justify-between flex-shrink-0">
-        <h1 className="text-lg font-mono text-text-primary">Профіль</h1>
+        <h1 className="text-lg font-mono text-text-primary">{t('profile')}</h1>
       </div>
 
       {/* Content */}
@@ -96,13 +99,13 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
                 <p className="text-xs font-mono text-text-secondary">
                   {isStudent ? (
                     <>
-                      Клас: <span className="text-text-primary">{user.className || "Невідомо"}</span>
-                      {user.email && <> · Email: <span className="text-text-primary">{user.email}</span></>}
+                      {t('classLabel')}: <span className="text-text-primary">{user.className || t('unknown')}</span>
+                      {user.email && <> · {t('email')}: <span className="text-text-primary">{user.email}</span></>}
                     </>
                   ) : (
                     <>
-                      Мова: <span className="text-text-primary">{course}</span>
-                      {!isEducational && <> · Difus: <span className="text-text-primary">{user.difus === 1 ? "Підвищений" : "Базовий"}</span></>}
+                      {t('language')}: <span className="text-text-primary">{course}</span>
+                      {!isEducational && <> · {t('difus')}: <span className="text-text-primary">{user.difus === 1 ? t('advanced') : t('basic')}</span></>}
                     </>
                   )}
                 </p>
@@ -113,7 +116,7 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
           <Card className="p-6 border space-y-6">
             {!isStudent && !isEducational && (
               <div>
-                <h2 className="text-sm font-mono text-text-primary mb-3">Мова програмування</h2>
+                <h2 className="text-sm font-mono text-text-primary mb-3">{t('programmingLanguage')}</h2>
                 <div className="flex gap-2">
                   <button
                     className={`flex-1 py-2 px-4 border font-mono text-xs transition-fast ${
@@ -137,43 +140,43 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
                   </button>
                 </div>
                 <p className="text-xs font-mono text-text-muted mt-2">
-                  Історія завдань та оцінок зберігається окремо для кожної мови.
+                  {t('taskHistorySaved')}
                 </p>
               </div>
             )}
             {isStudent && (
               <div>
-                <h2 className="text-sm font-mono text-text-primary mb-3">Інформація про учня</h2>
+                <h2 className="text-sm font-mono text-text-primary mb-3">{t('studentInfo')}</h2>
                 <div className="space-y-2 text-sm font-mono">
                   <div className="flex justify-between">
-                    <span className="text-text-secondary">Клас:</span>
-                    <span className="text-text-primary">{user.className || "Невідомо"}</span>
+                    <span className="text-text-secondary">{t('classLabel')}:</span>
+                    <span className="text-text-primary">{user.className || t('unknown')}</span>
                   </div>
                   {user.email && (
                     <div className="flex justify-between">
-                      <span className="text-text-secondary">Email:</span>
+                      <span className="text-text-secondary">{t('email')}:</span>
                       <span className="text-text-primary">{user.email}</span>
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-text-secondary">Мова програмування:</span>
+                    <span className="text-text-secondary">{t('programmingLanguage')}:</span>
                     <span className="text-text-primary">{user.course}</span>
                   </div>
                 </div>
                 <p className="text-xs font-mono text-text-muted mt-2">
-                  Мову програмування та клас визначає вчитель.
+                  {t('languageDeterminedByTeacher')}
                 </p>
               </div>
             )}
 
             <div>
-              <h2 className="text-sm font-mono text-text-primary mb-3">Аватар профілю</h2>
+              <h2 className="text-sm font-mono text-text-primary mb-3">{t('profileAvatar')}</h2>
               <div
                 onDrop={onDrop}
                 onDragOver={(e) => e.preventDefault()}
                 className="border border-dashed border-border bg-bg-code p-6 text-center cursor-pointer hover:border-primary transition-fast"
               >
-                <p className="text-xs font-mono text-text-primary mb-1">Перетягни PNG/JPG або обери файл</p>
+                <p className="text-xs font-mono text-text-primary mb-1">{t('dragOrChooseFile')}</p>
                 <input
                   type="file"
                   accept="image/*"
@@ -185,7 +188,7 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
 
             {msg && (
               <div className={`text-xs font-mono ${
-                msg.includes("Помилка") ? "text-accent-error" : "text-accent-success"
+                msg.includes(t('error')) ? "text-accent-error" : "text-accent-success"
               }`}>
                 {msg}
               </div>
@@ -193,27 +196,27 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
 
             {!isEducational && (
               <Button onClick={handleSave} disabled={saving} className="w-full">
-                {saving ? "Збереження..." : "Зберегти зміни"}
+                {saving ? t('saving') : t('saveChanges')}
               </Button>
             )}
             {isStudent && (
               <Button onClick={handleSave} disabled={saving} className="w-full">
-                {saving ? "Збереження..." : "Зберегти аватарку"}
+                {saving ? t('saving') : t('saveAvatar')}
               </Button>
             )}
             {isEducational && !isStudent && (
               <p className="text-xs font-mono text-text-muted text-center">
-                Вчителі не можуть змінювати мову програмування через профіль.
+                {t('teachersCannotChangeLanguage')}
               </p>
             )}
 
             {!user.googleId && (
               <div>
-                <h2 className="text-sm font-mono text-text-primary mb-3">Підключення Google</h2>
+                <h2 className="text-sm font-mono text-text-primary mb-3">{t('googleConnection')}</h2>
                 <button
                   onClick={() => {
                     setLinkingGoogle(true);
-                    window.location.href = `${import.meta.env.VITE_API_URL || "http://localhost:4000"}/auth/google?link=true`;
+                    window.location.href = `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/google?link=true`;
                   }}
                   disabled={linkingGoogle}
                   className="w-full flex items-center justify-center gap-2 border border-border bg-bg-code hover:bg-bg-hover px-4 py-2 text-sm font-mono text-text-primary transition-fast disabled:opacity-50"
@@ -236,19 +239,22 @@ export const ProfilePage: React.FC<Props> = ({ user, onUserChange }) => {
                       d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                     />
                   </svg>
-                  {linkingGoogle ? "Підключення..." : "Підв'язати Google акаунт"}
+                  {linkingGoogle ? t('linking') : t('linkGoogleAccount')}
                 </button>
                 <p className="text-xs font-mono text-text-muted mt-2">
-                  Після підв'язки ви зможете входити через Google.
+                  {t('afterLinkingCanLogin')}
                 </p>
               </div>
             )}
 
             {user.googleId && (
               <div>
-                <h2 className="text-sm font-mono text-text-primary mb-3">Google акаунт</h2>
+                <h2 className="text-sm font-mono text-text-primary mb-3">{tr("Google акаунт", "Google account")}</h2>
                 <p className="text-xs font-mono text-text-secondary">
-                  ✅ Ваш Google акаунт підв'язано. Ви можете входити через Google.
+                  {tr(
+                    "✅ Ваш Google акаунт підв'язано. Ви можете входити через Google.",
+                    "✅ Your Google account is linked. You can sign in with Google."
+                  )}
                 </p>
               </div>
             )}

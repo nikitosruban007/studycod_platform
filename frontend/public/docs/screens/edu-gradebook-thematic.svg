@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="880" viewBox="0 0 1400 880">
+  <defs>
+    <style>
+      .bg { fill:#0b0f14; }
+      .panel { fill:#0f1620; stroke:#233043; stroke-width:2; }
+      .muted { fill:#9fb3c8; font:500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .title { fill:#d6e1f0; font:800 30px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .mono { fill:#d6e1f0; font:700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .cell { fill:#0b0f14; stroke:#233043; stroke-width:2; }
+      .th { fill:#0b1510; stroke:#00ff88; stroke-width:2; }
+      .cw { fill:#17120b; stroke:#ffd93d; stroke-width:2; }
+      .task { fill:#101820; stroke:#3a4f6a; stroke-width:2; }
+      .btn { fill:#0b1510; stroke:#00ff88; stroke-width:2; }
+      .btnText { fill:#00ff88; font:900 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .trash { fill:#ff6b9d; font:900 16px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="880"/>
+  <rect class="panel" x="40" y="30" width="1320" height="84" rx="14"/>
+  <text class="mono" x="78" y="82">Журнал (Gradebook)</text>
+  <text class="muted" x="930" y="82">Вчитель · /edu/classes/:id/gradebook</text>
+
+  <rect class="panel" x="40" y="140" width="1320" height="710" rx="14"/>
+  <text class="title" x="78" y="196">Тема: Масиви</text>
+  <text class="muted" x="78" y="230">Тематична — одна колонка. Її можна створити і видалити.</text>
+
+  <rect class="btn" x="78" y="252" width="250" height="44" rx="12"/>
+  <text class="btnText" x="104" y="280">+ Створити тематичну</text>
+
+  <!-- table header -->
+  <rect class="cell" x="78" y="320" width="280" height="64" rx="12"/>
+  <text class="mono" x="110" y="360">Учень</text>
+
+  <rect class="task" x="370" y="320" width="170" height="64" rx="12"/>
+  <text class="mono" x="394" y="360">Практика 1</text>
+
+  <rect class="task" x="550" y="320" width="170" height="64" rx="12"/>
+  <text class="mono" x="574" y="360">Практика 2</text>
+
+  <rect class="th" x="730" y="320" width="200" height="64" rx="12"/>
+  <text class="mono" x="764" y="360">Тематична</text>
+  <text class="trash" x="910" y="346">🗑</text>
+
+  <rect class="cw" x="940" y="320" width="260" height="64" rx="12"/>
+  <text class="mono" x="970" y="360">Самостійна №1</text>
+
+  <!-- row -->
+  <rect class="cell" x="78" y="404" width="280" height="64" rx="12"/>
+  <text class="muted" x="110" y="444">Іваненко І.</text>
+  <rect class="cell" x="370" y="404" width="170" height="64" rx="12"/>
+  <text class="mono" x="446" y="444">10</text>
+  <rect class="cell" x="550" y="404" width="170" height="64" rx="12"/>
+  <text class="mono" x="626" y="444">9</text>
+  <rect class="cell" x="730" y="404" width="200" height="64" rx="12"/>
+  <text class="mono" x="820" y="444">11</text>
+  <rect class="cell" x="940" y="404" width="260" height="64" rx="12"/>
+  <text class="mono" x="1068" y="444">8</text>
+
+  <text class="muted" x="78" y="520">Порада: видалення тематичної прибирає значення для всіх учнів цієї теми.</text>
+</svg>
+
+

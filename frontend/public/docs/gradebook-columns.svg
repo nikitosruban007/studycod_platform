@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+  <defs>
+    <style>
+      .bg { fill: #0b0f14; }
+      .panel { fill: #0f1620; stroke: #233043; stroke-width: 2; }
+      .title { fill: #d6e1f0; font: 600 34px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .text { fill: #9fb3c8; font: 500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .mono { fill: #d6e1f0; font: 700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .cell { fill: #0b0f14; stroke: #233043; stroke-width: 1.5; }
+      .th { fill: #0b1510; stroke: #29ff8a; stroke-width: 2; }
+      .cw { fill: #17120b; stroke: #ffbf3c; stroke-width: 2; }
+      .task { fill: #101820; stroke: #3a4f6a; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1200" height="675"/>
+  <text class="title" x="60" y="78">Журнал (Gradebook) — логіка колонок</text>
+  <text class="text" x="60" y="115">Один рядок = один учень. Колонки групуються по темі.</text>
+
+  <rect class="panel" x="60" y="150" width="1080" height="470" rx="10"/>
+
+  <!-- Header row -->
+  <rect class="cell" x="100" y="200" width="220" height="60" rx="8"/>
+  <text class="mono" x="120" y="236">Учень</text>
+
+  <rect class="task" x="340" y="200" width="160" height="60" rx="8"/>
+  <text class="mono" x="360" y="236">Практика 1</text>
+
+  <rect class="task" x="510" y="200" width="160" height="60" rx="8"/>
+  <text class="mono" x="530" y="236">Практика 2</text>
+
+  <rect class="th" x="680" y="200" width="170" height="60" rx="8"/>
+  <text class="mono" x="700" y="236">Тематична</text>
+
+  <rect class="cw" x="860" y="200" width="210" height="60" rx="8"/>
+  <text class="mono" x="880" y="236">Контрольна</text>
+
+  <!-- Row 1 -->
+  <rect class="cell" x="100" y="280" width="220" height="60" rx="8"/>
+  <text class="text" x="120" y="316">Іваненко І.</text>
+  <rect class="cell" x="340" y="280" width="160" height="60" rx="8"/>
+  <text class="text" x="405" y="316">10</text>
+  <rect class="cell" x="510" y="280" width="160" height="60" rx="8"/>
+  <text class="text" x="575" y="316">9</text>
+  <rect class="cell" x="680" y="280" width="170" height="60" rx="8"/>
+  <text class="text" x="760" y="316">11</text>
+  <rect class="cell" x="860" y="280" width="210" height="60" rx="8"/>
+  <text class="text" x="960" y="316">8</text>
+
+  <!-- Legend -->
+  <rect class="task" x="100" y="390" width="22" height="22" rx="4"/>
+  <text class="text" x="135" y="408">Практичні задачі — окремі колонки</text>
+
+  <rect class="th" x="100" y="430" width="22" height="22" rx="4"/>
+  <text class="text" x="135" y="448">Тематична — одна колонка на тему</text>
+
+  <rect class="cw" x="100" y="470" width="22" height="22" rx="4"/>
+  <text class="text" x="135" y="488">Контрольна — одна колонка (не розбивається на задачі)</text>
+</svg>
+
+

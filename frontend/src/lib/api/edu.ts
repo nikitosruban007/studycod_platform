@@ -59,16 +59,71 @@ export interface StudentCredentials {
 
 export interface Lesson {
   id: number;
-  type: "LESSON" | "CONTROL";
+  type: "TOPIC" | "CONTROL" | "LESSON"; // TOPIC - практичні завдання з теми, CONTROL - контрольна робота, LESSON - для сумісності
   title: string;
-  hasTheory: boolean;
+  parentTopicId?: number;
+  parentTopicTitle?: string;
+  controlWorks?: Array<{
+    id: number;
+    title: string;
+    timeLimitMinutes?: number | null;
+    deadline?: string | null;
+    tasksCount: number;
+    hasTheory?: boolean;
+    hasPractice?: boolean;
+    quizJson?: string | null;
+    studentGrade?: number | null;
+    studentStatus?: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+  }>;
+  hasTheory?: boolean;
   theory?: string;
   timeLimitMinutes?: number;
-  controlHasTheory: boolean;
-  controlHasPractice: boolean;
+  controlHasTheory?: boolean;
+  controlHasPractice?: boolean;
   quizJson?: string | null;
   tasksCount: number;
   createdAt: string;
+  quizSubmitted?: boolean;
+  quizGrade?: number | null;
+  quizReview?: {
+    version: number;
+    correctAnswers: number;
+    totalQuestions: number;
+    questions: Array<{
+      index: number;
+      question: string;
+      options: Record<string, string>;
+      correct: string; // А/Б/В/Г/Д
+      student: string | null; // А/Б/В/Г/Д
+      isCorrect: boolean;
+    }>;
+  } | null;
+  deadline?: string | null; // Дедлайн уроку
+  tasks?: Array<{
+    id: number;
+    title: string;
+    description?: string;
+    template?: string;
+    deadline?: string | null; // Дедлайн завдання
+    maxAttempts?: number;
+    isClosed?: boolean;
+    testDataCount?: number;
+    hasGrade?: boolean;
+    grade?: {
+      id: number;
+      total: number;
+      testsPassed: number;
+      testsTotal: number;
+      isCompleted?: boolean;
+      testResults?: Array<{
+        input: string;
+        expected: string;
+        actual: string;
+        stderr?: string;
+        passed: boolean;
+      }> | null; // Збережені результати тестів
+    };
+  }>; // Завдання з дедлайнами
 }
 
 export interface Task {
@@ -88,16 +143,22 @@ export interface TaskWithGrade {
   language: "JAVA" | "PYTHON";
   testDataCount: number;
   savedCode?: string; // Збережений код учня
+  maxAttempts?: number;
+  deadline?: string | null;
+  isClosed?: boolean;
+  attemptsUsed?: number;
   lesson: {
     id: number;
     title: string;
-    type: "LESSON" | "CONTROL";
+    type: "TOPIC" | "CONTROL" | "LESSON"; // TOPIC - практичні завдання з теми, CONTROL - контрольна робота, LESSON - для сумісності
     hasTheory: boolean;
     theory?: string;
     timeLimitMinutes?: number;
     quizJson?: string;
     controlHasTheory?: boolean;
     controlHasPractice?: boolean;
+    quizSubmitted?: boolean;
+    quizGrade?: number | null;
   };
   hasGrade: boolean;
   grade?: {
@@ -106,7 +167,16 @@ export interface TaskWithGrade {
     testsPassed: number;
     testsTotal: number;
     feedback?: string;
+    isCompleted?: boolean;
     createdAt: string;
+    submittedCode?: string; // Код, який відправив студент
+    testResults?: Array<{
+      input: string;
+      expected: string;
+      actual: string;
+      stderr?: string;
+      passed: boolean;
+    }> | null; // Збережені результати тестів
   };
 }
 
@@ -125,13 +195,14 @@ export interface Grade {
       id: number;
       title: string;
       type: "LESSON" | "CONTROL";
+      theory?: string | null;
     };
   };
 }
 
 export interface TestResult {
+  testId?: number;
   input: string;
-  expected: string;
   actual: string;
   stderr?: string;
   passed: boolean;
@@ -190,8 +261,9 @@ export async function getStudents(classId: number): Promise<Student[]> {
   return res.data.students;
 }
 
-export async function exportStudents(classId: number): Promise<Blob> {
-  const res = await api.get(`/edu/classes/${classId}/students/export`, {
+export async function exportStudents(classId: number, withPasswords?: boolean): Promise<Blob> {
+  const query = withPasswords ? "?withPasswords=1" : "";
+  const res = await api.get(`/edu/classes/${classId}/students/export${query}`, {
     responseType: "blob",
   });
   return res.data;
@@ -233,13 +305,52 @@ export async function getLessons(classId: number): Promise<Lesson[]> {
   return res.data.lessons;
 }
 
+// Control Work Formula API
+export interface ControlWork {
+  id: number;
+  title: string | null;
+  formula: string | null;
+  topicId: number;
+}
+
+export async function updateControlWorkFormula(
+  controlWorkId: number,
+  formula: string | null
+): Promise<{ message: string; controlWorkId: number }> {
+  const res = await api.put(`/edu/control-works/${controlWorkId}/formula`, { formula });
+  return res.data;
+}
+
 export async function getStudentLessons(): Promise<Lesson[]> {
   const res = await api.get(`/edu/students/me/lessons`);
   return res.data.lessons;
 }
 
-export async function getLesson(lessonId: number): Promise<Lesson & { tasks: Task[] }> {
-  const res = await api.get(`/edu/lessons/${lessonId}`);
+// Topics API
+export interface Topic {
+  id: number;
+  title: string;
+  description?: string | null;
+  order: number;
+  language: "JAVA" | "PYTHON";
+  tasks?: any[];
+  controlWorks?: any[];
+}
+
+export async function getTopics(classId?: number, language?: "JAVA" | "PYTHON"): Promise<Topic[]> {
+  const params = new URLSearchParams();
+  if (classId) params.append("classId", classId.toString());
+  if (language) params.append("language", language);
+  const res = await api.get(`/topics?${params.toString()}`);
+  return res.data.topics || [];
+}
+
+export async function getLesson(
+  lessonId: number,
+  type?: "TOPIC" | "CONTROL" | "LESSON"
+): Promise<Lesson & { tasks: Task[] }> {
+  const qs = type ? `?type=${encodeURIComponent(type)}` : "";
+  const res = await api.get(`/edu/lessons/${lessonId}${qs}`);
   return res.data.lesson;
 }
 
@@ -289,17 +400,35 @@ export async function runCode(taskId: number, code: string, input?: string): Pro
 }
 
 export async function submitCode(taskId: number, code: string): Promise<{
-  message: string;
+  message?: string;
   grade: {
     id: number;
-    total: number;
+    total: number | null;
     testsPassed: number;
     testsTotal: number;
     isManuallyGraded: boolean;
   };
-  testResults: TestResult[];
+  testResults?: TestResult[];
+  requiresManualReview?: boolean;
 }> {
   const res = await api.post(`/edu/tasks/${taskId}/submit`, { code });
+  return res.data;
+}
+
+export async function completeTask(taskId: number, code: string): Promise<{
+  message?: string;
+  grade: {
+    id: number;
+    total: number | null;
+    testsPassed: number;
+    testsTotal: number;
+    isManuallyGraded: boolean;
+    isCompleted: boolean;
+  };
+  testResults?: TestResult[];
+  requiresManualReview?: boolean;
+}> {
+  const res = await api.post(`/edu/tasks/${taskId}/complete`, { code });
   return res.data;
 }
 
@@ -309,7 +438,6 @@ export async function generateTestData(taskId: number, count: number): Promise<{
   testData: Array<{
     id: number;
     input: string;
-    expectedOutput: string;
     points: number;
   }>;
 }> {
@@ -319,8 +447,9 @@ export async function generateTestData(taskId: number, count: number): Promise<{
 
 export interface TestDataItem {
   input: string;
-  expectedOutput: string;
+  expectedOutput: string; // write-only (never returned by API)
   points: number;
+  isHidden?: boolean;
 }
 
 export async function addTestData(taskId: number, testData: TestDataItem[]): Promise<{ count: number }> {
@@ -382,6 +511,14 @@ export async function createManualGrade(
   return res.data;
 }
 
+export async function deleteTaskGrade(
+  taskId: number,
+  studentId: number
+): Promise<{ message: string; deleted: number }> {
+  const res = await api.delete(`/edu/tasks/${taskId}/grades/${studentId}`);
+  return res.data;
+}
+
 // Student Info
 export async function getMyStudentInfo(): Promise<{
   student: {
@@ -402,6 +539,17 @@ export async function getMyStudentInfo(): Promise<{
 }
 
 // Grades (for students)
+export type SummaryGrade = {
+  id: number;
+  name: string;
+  subject: string;
+  grade: number;
+  assessmentType?: "PRACTICE" | "INTERMEDIATE" | "CONTROL";
+  controlWorkId?: number | null;
+  controlWorkTitle?: string | null;
+  createdAt: string;
+};
+
 export interface StudentGradesResponse {
   grades: Grade[];
   summaryGrades: SummaryGrade[];
@@ -480,10 +628,93 @@ export async function updateGrade(gradeId: number, update: UpdateGradeRequest): 
   return res.data;
 }
 
+export interface PendingReview {
+  gradeId: number;
+  student: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    middleName?: string;
+    email: string;
+  };
+  task: {
+    id: number;
+    title: string;
+    lesson?: {
+      id: number;
+      title: string;
+      type: "LESSON" | "CONTROL";
+    };
+    topic?: {
+      id: number;
+      title: string;
+    };
+    type?: "PRACTICE" | "CONTROL";
+  } | null;
+  submittedCode: string | null;
+  submittedAt: string;
+  system: "old" | "new";
+}
+
+export async function getPendingReviews(): Promise<{ pendingReviews: PendingReview[] }> {
+  const res = await api.get("/edu/tasks/pending-review");
+  return res.data;
+}
+
+// Class Announcements
+export interface ClassAnnouncementDto {
+  id: number;
+  title: string | null;
+  content: string;
+  pinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+  author: {
+    id: number;
+    name: string;
+  };
+}
+
+export async function getClassAnnouncements(classId: number): Promise<{ announcements: ClassAnnouncementDto[] }> {
+  const res = await api.get(`/edu/classes/${classId}/announcements`);
+  return res.data;
+}
+
+export async function createClassAnnouncement(
+  classId: number,
+  payload: { title?: string | null; content: string; pinned?: boolean }
+): Promise<{ message: string; id: number }> {
+  const res = await api.post(`/edu/classes/${classId}/announcements`, payload);
+  return res.data;
+}
+
+export async function updateClassAnnouncement(
+  classId: number,
+  id: number,
+  payload: { title?: string | null; content?: string; pinned?: boolean }
+): Promise<{ message: string }> {
+  const res = await api.put(`/edu/classes/${classId}/announcements/${id}`, payload);
+  return res.data;
+}
+
+export async function deleteClassAnnouncement(classId: number, id: number): Promise<{ message: string }> {
+  const res = await api.delete(`/edu/classes/${classId}/announcements/${id}`);
+  return res.data;
+}
+
+export async function getMyAnnouncements(): Promise<{
+  class: { id: number; name: string };
+  announcements: ClassAnnouncementDto[];
+}> {
+  const res = await api.get(`/edu/students/me/announcements`);
+  return res.data;
+}
+
 // Summary Grades
 export interface CreateSummaryGradeRequest {
   name: string;
-  studentGrades: Array<{
+  topicId: number;
+  studentGrades?: Array<{
     studentId: number;
     grade: number;
   }>;
@@ -521,6 +752,18 @@ export async function updateSummaryGrade(
   await api.put(`/edu/classes/${classId}/summary-grades/${summaryGradeId}`, { grade });
 }
 
+export async function deleteSummaryGrade(
+  classId: number,
+  summaryGradeId: number
+): Promise<void> {
+  await api.delete(`/edu/classes/${classId}/summary-grades/${summaryGradeId}`);
+}
+
+export async function deleteThematicForTopic(classId: number, topicId: number): Promise<{ message: string; deleted: number }> {
+  const res = await api.delete(`/edu/classes/${classId}/topics/${topicId}/thematic`);
+  return res.data;
+}
+
 // Gradebook
 export interface GradebookStudent {
   studentId: number;
@@ -530,8 +773,12 @@ export interface GradebookStudent {
     taskTitle: string;
     lessonId: number;
     lessonTitle: string;
+    lessonType?: string;
     grade: number | null;
+    gradeId: number | null;
     createdAt: string | null;
+    isControlWork?: boolean;
+    isSummaryGrade?: boolean;
   }>;
 }
 
@@ -539,9 +786,12 @@ export interface GradebookLesson {
   id: number;
   title: string;
   type: string;
+  parentId?: number;
+  parentTitle?: string;
   tasks: Array<{
     id: number;
     title: string;
+    type?: string;
   }>;
 }
 
@@ -555,10 +805,145 @@ export async function getClassGradebook(classId: number): Promise<GradebookRespo
   return res.data;
 }
 
+export interface ControlWorkDetails {
+  controlWork: {
+    id: number;
+    title: string;
+    hasTheory: boolean;
+    hasPractice: boolean;
+  };
+  summaryGrade: {
+    id: number;
+    grade: number;
+    theoryGrade: number | null;
+    createdAt: string;
+  } | null;
+  practiceTasks: Array<{
+    taskId: number;
+    taskTitle: string;
+    grade: number | null;
+    testsPassed: number;
+    testsTotal: number;
+    feedback: string | null;
+    createdAt: string | null;
+  }>;
+  averagePracticeGrade: number;
+  calculatedGrade: number | null;
+}
+
+export async function getControlWorkDetails(controlWorkId: number, studentId: number): Promise<ControlWorkDetails> {
+  const res = await api.get(`/edu/control-works/${controlWorkId}/students/${studentId}/details`);
+  return res.data;
+}
+
+export interface TopicTaskStudentWork {
+  task: {
+    id: number;
+    title: string;
+    type: "PRACTICE" | "CONTROL";
+    topicId: number;
+    topicTitle: string;
+  };
+  student: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    middleName?: string | null;
+  };
+  submissions: Array<{
+    id: number;
+    total: number | null;
+    testsPassed: number;
+    testsTotal: number;
+    feedback: string | null;
+    isManuallyGraded: boolean;
+    isCompleted: boolean;
+    submittedCode: string | null;
+    testResults: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+  }>;
+}
+
+export async function getTopicTaskStudentWork(taskId: number, studentId: number): Promise<TopicTaskStudentWork> {
+  const res = await api.get(`/edu/topic-tasks/${taskId}/students/${studentId}/work`);
+  return res.data;
+}
+
+export interface ControlWorkStudentWork {
+  controlWork: {
+    id: number;
+    title: string | null;
+    hasTheory: boolean;
+    hasPractice: boolean;
+  };
+  student: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    middleName?: string | null;
+  };
+  summaryGrade: {
+    id: number;
+    grade: number;
+    theoryGrade: number | null;
+    createdAt: string | null;
+  } | null;
+  quizReview: {
+    version: number;
+    correctAnswers: number;
+    totalQuestions: number;
+    questions: Array<{
+      index: number;
+      question: string;
+      options: Record<string, string>;
+      correct: string;
+      student: string | null;
+      isCorrect: boolean;
+    }>;
+  } | null;
+  practiceTasks: Array<{
+    taskId: number;
+    taskTitle: string;
+    grade: number | null;
+    gradeId: number | null;
+    testsPassed: number;
+    testsTotal: number;
+    feedback: string | null;
+    isManuallyGraded: boolean;
+    submittedCode: string | null;
+    testResults: string | null;
+    createdAt: string | null;
+  }>;
+}
+
+export async function getControlWorkStudentWork(controlWorkId: number, studentId: number): Promise<ControlWorkStudentWork> {
+  const res = await api.get(`/edu/control-works/${controlWorkId}/students/${studentId}/work`);
+  return res.data;
+}
+
+export async function unassignTask(taskId: number): Promise<void> {
+  await api.post(`/topics/tasks/${taskId}/unassign`);
+}
+
+export async function unassignControlWork(controlWorkId: number): Promise<void> {
+  await api.post(`/topics/control-works/${controlWorkId}/unassign`);
+}
+
+export async function updateControlWorkGrade(
+  controlWorkId: number,
+  studentId: number,
+  grade: number
+): Promise<{ message: string; summaryGrade: { id: number; grade: number } }> {
+  const res = await api.put(`/edu/control-works/${controlWorkId}/students/${studentId}/grade`, { grade });
+  return res.data;
+}
+
 // Quiz submission
 export async function submitQuizAnswers(
-  taskId: number,
-  answers: Record<number, string>
+  taskOrLessonId: number,
+  answers: Record<number, string>,
+  isLessonId?: boolean
 ): Promise<{
   message: string;
   grade: {
@@ -567,7 +952,56 @@ export async function submitQuizAnswers(
     correctAnswers: number;
     totalQuestions: number;
   };
+  review?: {
+    version: number;
+    correctAnswers: number;
+    totalQuestions: number;
+    questions: Array<{
+      index: number;
+      question: string;
+      options: Record<string, string>;
+      correct: string;
+      student: string | null;
+      isCorrect: boolean;
+    }>;
+  };
 }> {
-  const res = await api.post(`/edu/tasks/${taskId}/submit-quiz`, { answers });
+  const endpoint = isLessonId 
+    ? `/edu/lessons/${taskOrLessonId}/submit-quiz`
+    : `/edu/tasks/${taskOrLessonId}/submit-quiz`;
+  const res = await api.post(endpoint, { answers });
+  return res.data;
+}
+
+// Lesson attempts (time limit)
+export async function startLessonAttempt(lessonId: number): Promise<{
+  attemptId: number;
+  startedAt: string;
+  timeLimitMinutes: number;
+  remainingSeconds: number;
+}> {
+  const res = await api.post(`/edu/lessons/${lessonId}/start-attempt`);
+  return res.data;
+}
+
+export async function getLessonAttemptStatus(lessonId: number): Promise<{
+  hasActiveAttempt: boolean;
+  remainingSeconds: number;
+  startedAt?: string;
+  timeLimitMinutes?: number;
+  status?: string;
+  finishedAt?: string;
+}> {
+  const res = await api.get(`/edu/lessons/${lessonId}/attempt-status`);
+  return res.data;
+}
+
+export async function getControlWorkStatus(lessonId: number): Promise<{
+  status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+  startedAt?: string;
+  timeLimitMinutes?: number;
+  finishedAt?: string;
+}> {
+  const res = await api.get(`/edu/lessons/${lessonId}/control-work-status`);
   return res.data;
 }

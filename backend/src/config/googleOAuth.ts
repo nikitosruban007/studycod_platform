@@ -7,7 +7,7 @@ export function getGoogleClientSecret(): string {
 }
 
 export function getGoogleCallbackUrl(): string {
-  return (process.env.GOOGLE_CALLBACK_URL || "http://localhost:4000/auth/google/callback").trim();
+  return (process.env.GOOGLE_CALLBACK_URL || "http://localhost:3000/auth/google/callback").trim();
 }
 
 export const isGoogleOAuthEnabled = () => {

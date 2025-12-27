@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config';
+import { UserRole } from '../entities/User';
 
 export interface AuthRequest extends Request {
   userId?: number;
   studentId?: number;
   userType?: "USER" | "STUDENT";
+  userRole?: UserRole | null;
   lang?: string;
   difus?: number;
 }
@@ -24,17 +26,25 @@ export const authMiddleware = (
   const token = authHeader.slice('Bearer '.length);
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as any;
+    const payload = jwt.verify(token, JWT_SECRET) as {
+      userId?: number;
+      studentId?: number;
+      type?: "STUDENT" | "USER";
+      lang?: string;
+      role?: UserRole;
+    };
 
     if (payload.type === "STUDENT" && payload.studentId) {
       req.studentId = payload.studentId;
       req.userId = payload.studentId;
       req.userType = "STUDENT";
       req.lang = payload.lang;
+      req.userRole = null;
     } else {
       req.userId = payload.userId;
       req.userType = "USER";
       req.lang = payload.lang;
+      req.userRole = payload.role || null;
     }
 
     next();

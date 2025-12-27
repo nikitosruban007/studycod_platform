@@ -1,10 +1,12 @@
 
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "../components/ui/Button";
 import { Logo } from "../components/Logo";
 import { register, login, resendVerificationEmail, requestPasswordReset, resetPassword } from "../lib/api/auth";
 import { registerTeacher, studentLogin } from "../lib/api/edu";
 import type { User, CourseLanguage } from "../types";
+import { applyTheme, getCurrentTheme } from "../theme";
 
 interface Props {
   onAuth: (user: User) => void;
@@ -14,6 +16,9 @@ type Mode = "login" | "register";
 type UserMode = "PERSONAL" | "EDUCATIONAL";
 
 export const AuthPage: React.FC<Props> = ({ onAuth }) => {
+  const { t, i18n } = useTranslation();
+  const tr = (uk: string, en: string) => (i18n.language?.toLowerCase().startsWith("en") ? en : uk);
+  const [theme, setTheme] = useState<"dark" | "light">(() => getCurrentTheme());
   const [userMode, setUserMode] = useState<UserMode>("PERSONAL");
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
@@ -39,8 +44,22 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
     try {
       if (mode === "login") {
         try {
-          // Спочатку пробуємо вхід як учень (для EDU режиму)
+          // Для EDU режиму спочатку пробуємо звичайний login (для вчителів)
+          // Потім пробуємо studentLogin (для учнів)
           if (userMode === "EDUCATIONAL") {
+            try {
+              // Спочатку пробуємо як вчитель
+              const user = await login(username.trim(), password);
+              // Перевірка режиму
+              if (user.userMode !== "EDUCATIONAL") {
+                setError(tr("Цей акаунт не призначений для освітнього режиму", "This account is not intended for EDU mode"));
+                return;
+              }
+              // Якщо успішно і це EDU режим - це вчитель
+              onAuth(user);
+              return;
+            } catch (teacherErr: any) {
+              // Якщо не вчитель, пробуємо як учень
             try {
               const studentResult = await studentLogin(username.trim(), password);
               // Якщо успішно - це учень
@@ -64,27 +83,25 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
               onAuth(studentUser as any);
               return;
             } catch (studentErr: any) {
-              // Якщо не учень, пробуємо як вчитель
-              // Продовжуємо до звичайного login
+                // Якщо не вдалося увійти ні як вчитель, ні як учень
+                setError(studentErr.response?.data?.message || tr("Невірні облікові дані", "Invalid credentials"));
+                return;
             }
           }
-          
-          // Звичайний вхід (вчитель або Personal)
+          } else {
+            // Звичайний вхід (Personal режим)
           const user = await login(username.trim(), password);
           // Перевірка режиму
           if (userMode === "PERSONAL" && user.userMode === "EDUCATIONAL") {
-            setError("Цей акаунт призначений для EDU режиму. Оберіть вкладку 'EDU'.");
+            setError(tr("Цей акаунт призначений для EDU режиму. Оберіть вкладку 'EDU'.", "This account is for EDU mode. Please select the 'EDU' tab."));
             return;
           }
-          if (userMode === "EDUCATIONAL" && user.userMode === "PERSONAL") {
-            setError("Цей акаунт призначений для Personal режиму. Оберіть вкладку 'Personal'.");
-            return;
+            onAuth(user);
           }
-          onAuth(user);
         } catch (loginErr: any) {
-          const loginErrorMessage = loginErr?.response?.data?.message ?? "Помилка авторизації";
+          const loginErrorMessage = loginErr?.response?.data?.message ?? tr("Помилка авторизації", "Authorization error");
           if (loginErrorMessage === "EMAIL_NOT_VERIFIED" && userMode === "EDUCATIONAL") {
-            setError("Email не підтверджено. Перевірте вашу пошту та підтвердіть email перед входом.");
+            setError(tr("Email не підтверджено. Перевірте вашу пошту та підтвердіть email перед входом.", "Email is not verified. Check your inbox and verify your email before logging in."));
             setEmailSent(true);
             // Спробуємо знайти email з username (якщо це email)
             if (username.includes("@")) {
@@ -100,7 +117,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
         if (userMode === "EDUCATIONAL") {
           // Teacher registration for EDU mode
           if (!email.trim()) {
-            setError("Email обов'язковий для реєстрації вчителя");
+            setError(tr("Email обов'язковий для реєстрації вчителя", "Email is required for teacher registration"));
             return;
           }
           const result = await registerTeacher(
@@ -112,27 +129,43 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
           // Для EDU режиму email підтвердження обов'язкове
           if (result.requiresEmailVerification) {
             setEmailSent(true);
-            setSuccess("Реєстрація вчителя успішна! Перевірте вашу пошту для підтвердження email. Після підтвердження ви зможете увійти.");
+            setSuccess(tr(
+              "Реєстрація вчителя успішна! Перевірте вашу пошту для підтвердження email. Після підтвердження ви зможете увійти.",
+              "Teacher registration successful! Check your email to verify it. After verification you can log in."
+            ));
           } else if (result.user && result.token) {
             // Якщо токен повернуто (не повинно бути для EDU)
-            setSuccess("Реєстрація вчителя успішна!");
+            setSuccess(tr("Реєстрація вчителя успішна!", "Teacher registration successful!"));
             setTimeout(() => {
               onAuth(result.user);
             }, 1500);
           }
         } else {
           // Regular Personal mode registration
-          const result = await register(username.trim(), email.trim(), password, course);
+          if (!firstName.trim() || !lastName.trim() || !birthDay || !birthMonth) {
+            setError(tr("Ім'я, прізвище та дата народження обов'язкові", "First name, last name, and birth date are required"));
+            return;
+          }
+          const result = await register(
+            username.trim(),
+            email.trim(),
+            password,
+            course,
+            firstName.trim(),
+            lastName.trim(),
+            Number(birthDay),
+            Number(birthMonth)
+          );
           if (result.requiresEmailVerification) {
             setEmailSent(true);
-            setSuccess("Реєстрація успішна! Перевірте вашу пошту для підтвердження.");
+            setSuccess(tr("Реєстрація успішна! Перевірте вашу пошту для підтвердження.", "Registration successful! Check your email to verify."));
           } else if (result.user && result.token) {
             onAuth(result.user);
           }
         }
       }
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message ?? "Помилка авторизації";
+      const errorMessage = err?.response?.data?.message ?? tr("Помилка авторизації", "Authorization error");
       setError(errorMessage);
       if (errorMessage === "EMAIL_NOT_VERIFIED") {
         setEmailSent(true);
@@ -144,16 +177,16 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
 
   const handleResendEmail = async () => {
     if (!email.trim()) {
-      setError("Введіть email для повторної відправки");
+      setError(tr("Введіть email для повторної відправки", "Enter an email to resend"));
       return;
     }
     setLoading(true);
     setError(null);
     try {
       await resendVerificationEmail(email.trim());
-      setSuccess("Лист підтвердження відправлено повторно!");
+      setSuccess(tr("Лист підтвердження відправлено повторно!", "Verification email resent!"));
     } catch (err: any) {
-      setError(err?.response?.data?.message ?? "Помилка відправки листа");
+      setError(err?.response?.data?.message ?? tr("Помилка відправки листа", "Failed to send email"));
     } finally {
       setLoading(false);
     }
@@ -162,16 +195,38 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg-base" style={{ minWidth: "1280px" }}>
       <div className="w-full max-w-md bg-bg-surface border border-border p-8">
+        <div className="flex justify-end gap-2 mb-2">
+          <button
+            type="button"
+            onClick={() => i18n.changeLanguage(i18n.language === "uk" ? "en" : "uk")}
+            className="px-3 py-1 text-xs font-mono border border-border hover:bg-bg-hover transition-fast"
+            title={i18n.language === "uk" ? t("switchToEnglish") : t("switchToUkrainian")}
+          >
+            {i18n.language === "uk" ? "EN" : "UA"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const next = theme === "dark" ? "light" : "dark";
+              applyTheme(next);
+              setTheme(next);
+            }}
+            className="px-3 py-1 text-xs font-mono border border-border hover:bg-bg-hover transition-fast"
+            title={theme === "dark" ? t("switchToLightTheme") : t("switchToDarkTheme")}
+          >
+            {theme === "dark" ? "Light" : "Dark"}
+          </button>
+        </div>
         <div className="flex flex-col items-center mb-6">
           <Logo size={48} />
           <h1 className="mt-4 text-xl font-mono text-text-primary">
             {mode === "login"
               ? userMode === "EDUCATIONAL"
-                ? "Вхід EDU"
-                : "Вхід Personal"
+                ? tr("Вхід EDU", "EDU login")
+                : tr("Вхід Personal", "Personal login")
               : userMode === "EDUCATIONAL"
-              ? "Реєстрація вчителя (EDU)"
-              : "Реєстрація (Personal)"}
+              ? tr("Реєстрація вчителя (EDU)", "Teacher registration (EDU)")
+              : tr("Реєстрація (Personal)", "Registration (Personal)")}
           </h1>
         </div>
         <div className="flex mb-4 border border-border bg-bg-code p-1">
@@ -209,7 +264,11 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
         {emailSent ? (
           <div className="space-y-4">
             <div className="text-xs font-mono text-text-primary border border-primary bg-bg-code px-3 py-2">
-              {success || "Перевірте вашу пошту для підтвердження email. Після підтвердження ви зможете увійти."}
+              {success ||
+                tr(
+                  "Перевірте вашу пошту для підтвердження email. Після підтвердження ви зможете увійти.",
+                  "Check your inbox to verify your email. After verification you can log in."
+                )}
             </div>
             <div>
               <label className="text-xs font-mono text-text-secondary mb-1 block">Email</label>
@@ -222,7 +281,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
               />
             </div>
             <Button type="button" onClick={handleResendEmail} className="w-full" disabled={loading}>
-              {loading ? "Відправка..." : "Відправити лист повторно"}
+              {loading ? tr("Відправка...", "Sending...") : tr("Відправити лист повторно", "Resend email")}
             </Button>
             <button
               type="button"
@@ -233,13 +292,13 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
               }}
               className="w-full text-xs font-mono text-text-secondary hover:text-text-primary transition-fast"
             >
-              Повернутись до реєстрації
+              {tr("Повернутись до реєстрації", "Back to registration")}
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-xs font-mono text-text-secondary mb-1 block">Логін</label>
+              <label className="text-xs font-mono text-text-secondary mb-1 block">{t("username")}</label>
               <input
                 className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
                 value={username}
@@ -261,7 +320,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs font-mono text-text-secondary mb-1 block">Ім'я</label>
+                    <label className="text-xs font-mono text-text-secondary mb-1 block">{t("firstName")}</label>
                     <input
                       type="text"
                       className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -271,7 +330,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-mono text-text-secondary mb-1 block">Прізвище</label>
+                    <label className="text-xs font-mono text-text-secondary mb-1 block">{t("lastName")}</label>
                     <input
                       type="text"
                       className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -282,10 +341,10 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-mono text-text-secondary mb-1 block">День народження (без року)</label>
+                  <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("День народження (без року)", "Birth day (no year)")}</label>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs font-mono text-text-secondary mb-1 block">День</label>
+                      <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("День", "Day")}</label>
                       <input
                         type="number"
                         min="1"
@@ -298,7 +357,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-mono text-text-secondary mb-1 block">Місяць</label>
+                      <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("Місяць", "Month")}</label>
                       <input
                         type="number"
                         min="1"
@@ -315,7 +374,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
               </>
             )}
             <div>
-              <label className="text-xs font-mono text-text-secondary mb-1 block">Пароль</label>
+              <label className="text-xs font-mono text-text-secondary mb-1 block">{t("password")}</label>
               <input
                 type="password"
                 className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -326,7 +385,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
             </div>
           {mode === "register" && (
             <div>
-              <label className="text-xs font-mono text-text-secondary mb-2 block">Мова курсу</label>
+              <label className="text-xs font-mono text-text-secondary mb-2 block">{t("programmingLanguage")}</label>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -364,7 +423,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                 }}
                 className="text-xs font-mono text-text-secondary hover:text-primary transition-fast block w-full"
               >
-                Немає аккаунту? <span className="text-primary">Зареєструватись</span>
+                {tr("Немає аккаунту?", "No account?")} <span className="text-primary">{t("register")}</span>
               </button>
               <button
                 type="button"
@@ -375,7 +434,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                 }}
                 className="text-xs font-mono text-text-secondary hover:text-primary transition-fast block w-full"
               >
-                Забули пароль? <span className="text-primary">Відновити</span>
+                {tr("Забули пароль?", "Forgot password?")} <span className="text-primary">{t("resetPassword")}</span>
               </button>
             </div>
           )}
@@ -390,7 +449,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                 }}
                 className="text-xs font-mono text-text-secondary hover:text-primary transition-fast"
               >
-                Вже є аккаунт? <span className="text-primary">Увійти</span>
+                {tr("Вже є аккаунт?", "Already have an account?")} <span className="text-primary">{t("login")}</span>
               </button>
             </div>
           )}
@@ -406,10 +465,10 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
             )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading 
-                ? "Обробка..." 
+                ? tr("Обробка...", "Processing...") 
                 : mode === "login"
-                ? "Увійти"
-                : "Зареєструватись"}
+                ? t("login")
+                : t("register")}
             </Button>
             {mode === "login" && (
               <div className="mt-4">
@@ -418,13 +477,13 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                     <div className="w-full border-t border-border"></div>
                   </div>
                   <div className="relative flex justify-center text-xs">
-                    <span className="px-2 bg-bg-surface text-text-secondary font-mono">або</span>
+                    <span className="px-2 bg-bg-surface text-text-secondary font-mono">{tr("або", "or")}</span>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    window.location.href = `${import.meta.env.VITE_API_URL || "http://localhost:4000"}/auth/google`;
+                    window.location.href = `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/google`;
                   }}
                   className="mt-4 w-full flex items-center justify-center gap-2 border border-border bg-bg-code hover:bg-bg-hover px-4 py-2 text-sm font-mono text-text-primary transition-fast"
                 >
@@ -446,7 +505,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                       d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                     />
                   </svg>
-                  Увійти через Google
+                  {tr("Увійти через Google", "Continue with Google")}
                 </button>
               </div>
             )}
@@ -487,12 +546,12 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                 }}
                 className="flex-1"
               >
-                Скасувати
+                {t("cancel")}
               </Button>
               <Button
                 onClick={async () => {
                   if (!resetEmail.trim()) {
-                    setError("Введіть email");
+                    setError(tr("Введіть email", "Enter an email"));
                     return;
                   }
                   setLoading(true);
@@ -500,13 +559,13 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                   setSuccess(null);
                   try {
                     await requestPasswordReset(resetEmail.trim());
-                    setSuccess("Лист з інструкціями відправлено на вашу пошту!");
+                    setSuccess(tr("Лист з інструкціями відправлено на вашу пошту!", "Instructions were sent to your email!"));
                     setTimeout(() => {
                       setShowForgotPassword(false);
                       setResetEmail("");
                     }, 2000);
                   } catch (err: any) {
-                    setError(err?.response?.data?.message || "Помилка відправки листа");
+                    setError(err?.response?.data?.message || tr("Помилка відправки листа", "Failed to send email"));
                   } finally {
                     setLoading(false);
                   }
@@ -514,7 +573,7 @@ export const AuthPage: React.FC<Props> = ({ onAuth }) => {
                 disabled={loading}
                 className="flex-1"
               >
-                {loading ? "Відправка..." : "Відправити"}
+                {loading ? tr("Відправка...", "Sending...") : tr("Відправити", "Send")}
               </Button>
             </div>
           </div>

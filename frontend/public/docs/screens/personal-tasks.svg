@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="880" viewBox="0 0 1400 880">
+  <defs>
+    <style>
+      .bg { fill:#0b0f14; }
+      .panel { fill:#0f1620; stroke:#233043; stroke-width:2; }
+      .muted { fill:#9fb3c8; font:500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .title { fill:#d6e1f0; font:800 30px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .mono { fill:#d6e1f0; font:700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .card { fill:#0b0f14; stroke:#233043; stroke-width:2; }
+      .chip { fill:#0b1510; stroke:#00ff88; stroke-width:2; }
+      .chipText { fill:#00ff88; font:800 16px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .btn { fill:url(#g); stroke:#00ff88; stroke-width:2; }
+      .btnText { fill:#0b0f14; font:900 16px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+    </style>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00ff88"/>
+      <stop offset="1" stop-color="#00cc6f"/>
+    </linearGradient>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="880"/>
+  <rect class="panel" x="40" y="30" width="1320" height="84" rx="14"/>
+  <text class="mono" x="78" y="82">StudyCod</text>
+  <rect class="chip" x="210" y="53" width="120" height="40" rx="10"/>
+  <text class="chipText" x="232" y="79">Tasks</text>
+  <text class="muted" x="1020" y="82">Personal · /tasks</text>
+
+  <rect class="panel" x="40" y="140" width="1320" height="710" rx="14"/>
+  <text class="title" x="78" y="196">Мої завдання</text>
+  <text class="muted" x="78" y="230">Відкрий задачу → напиши код → відправ → переглянь оцінку у /grades.</text>
+
+  <rect class="card" x="78" y="270" width="1244" height="140" rx="14"/>
+  <rect x="78" y="270" width="6" height="140" fill="#00ff88"/>
+  <text class="mono" x="110" y="320">Кількість елементів, більших за середнє</text>
+  <text class="muted" x="110" y="352">Складність: Medium · Мова: Java · Тестів: 10</text>
+  <rect class="btn" x="110" y="368" width="240" height="44" rx="12"/>
+  <text class="btnText" x="138" y="396">Перейти до задачі →</text>
+
+  <rect class="card" x="78" y="430" width="1244" height="140" rx="14"/>
+  <rect x="78" y="430" width="6" height="140" fill="#5b9fff"/>
+  <text class="mono" x="110" y="480">Перевірка паліндрома</text>
+  <text class="muted" x="110" y="512">Складність: Easy · Мова: Python · Тестів: 8</text>
+  <rect class="chip" x="110" y="528" width="240" height="44" rx="12"/>
+  <text class="chipText" x="136" y="556">Виконано ✓</text>
+
+  <text class="muted" x="78" y="820">Порада: у /grades зберігається історія твоїх результатів.</text>
+</svg>
+
+

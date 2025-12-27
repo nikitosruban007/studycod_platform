@@ -1,13 +1,16 @@
 // frontend/src/pages/GradeDetailsPage.tsx
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Modal } from "../components/ui/Modal";
 import { getStudentCode, updateGrade, type UpdateGradeRequest } from "../lib/api/edu";
 import { ArrowLeft, Save, Code2 } from "lucide-react";
+import { tr } from "../i18n";
 
 export const GradeDetailsPage: React.FC = () => {
+  const { i18n } = useTranslation();
   const { gradeId } = useParams<{ gradeId: string }>();
   const navigate = useNavigate();
   const [code, setCode] = useState("");
@@ -18,6 +21,12 @@ export const GradeDetailsPage: React.FC = () => {
   const [total, setTotal] = useState<number>(0);
   const [feedback, setFeedback] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const safeServerMessage = (value: unknown) => {
+    const msg = typeof value === "string" ? value : String(value ?? "");
+    if (i18n.language === "en" && /[А-Яа-яІіЇїЄєҐґ]/.test(msg)) return "";
+    return msg;
+  };
 
   useEffect(() => {
     if (gradeId) {
@@ -53,11 +62,12 @@ export const GradeDetailsPage: React.FC = () => {
     setSaving(true);
     try {
       await updateGrade(parseInt(gradeId, 10), update);
-      alert("Оцінка оновлена");
+      alert(tr("Оцінка оновлена", "Grade updated"));
       navigate(-1);
     } catch (error: any) {
       console.error("Failed to update grade:", error);
-      alert(error.response?.data?.message || "Не вдалося оновити оцінку");
+      const raw = safeServerMessage(error.response?.data?.message ?? error.message);
+      alert(raw || tr("Не вдалося оновити оцінку", "Failed to update grade"));
     } finally {
       setSaving(false);
     }
@@ -66,7 +76,7 @@ export const GradeDetailsPage: React.FC = () => {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center text-text-primary font-mono">
-        Завантаження...
+        {tr("Завантаження...", "Loading...")}
       </div>
     );
   }
@@ -77,7 +87,7 @@ export const GradeDetailsPage: React.FC = () => {
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={() => navigate(-1)}>
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Назад
+            {tr("Назад", "Back")}
           </Button>
           <div>
             <h1 className="text-lg font-mono text-text-primary">{task?.title}</h1>
@@ -88,7 +98,7 @@ export const GradeDetailsPage: React.FC = () => {
         </div>
         <Button onClick={handleSave} disabled={saving}>
           <Save className="w-4 h-4 mr-2" />
-          {saving ? "Збереження..." : "Зберегти"}
+          {saving ? tr("Збереження...", "Saving...") : tr("Зберегти", "Save")}
         </Button>
       </div>
 
@@ -104,12 +114,12 @@ export const GradeDetailsPage: React.FC = () => {
 
         {/* Right: Grade Editor */}
         <div className="w-80 bg-bg-surface p-4 overflow-y-auto">
-          <h2 className="text-lg font-mono text-text-primary mb-4">Оцінка</h2>
+          <h2 className="text-lg font-mono text-text-primary mb-4">{tr("Оцінка", "Grade")}</h2>
           
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-mono text-text-secondary mb-2">
-                Оцінка (1-12)
+                {tr("Оцінка (1-12)", "Grade (1-12)")}
               </label>
               <input
                 type="number"
@@ -123,13 +133,13 @@ export const GradeDetailsPage: React.FC = () => {
 
             <div>
               <label className="block text-sm font-mono text-text-secondary mb-2">
-                Коментар
+                {tr("Коментар", "Comment")}
               </label>
               <textarea
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 className="w-full px-3 py-2 bg-bg-base border border-border text-text-primary font-mono focus:outline-none focus:border-primary min-h-[200px]"
-                placeholder="Додайте коментар для учня..."
+                placeholder={tr("Додайте коментар для учня...", "Add a comment for the student...")}
               />
             </div>
           </div>

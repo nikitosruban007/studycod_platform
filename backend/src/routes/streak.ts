@@ -2,7 +2,7 @@ import { Router, Response, Request } from "express";
 import { AppDataSource } from "../data-source";
 import { User } from "../entities/User";
 import { emailService } from "../services/emailService";
-import { Not } from "typeorm";
+import { Not, IsNull } from "typeorm";
 
 const router = Router();
 const userRepo = () => AppDataSource.getRepository(User);
@@ -17,9 +17,13 @@ router.post("/check", async (req: Request, res: Response) => {
     const users = await userRepo().find({
       where: {
         currentStreak: Not(0),
-        lastActivityDate: Not(null as any),
-      } as any,
+        lastActivityDate: Not(IsNull()),
+      },
     });
+
+    const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
+    const MIN_STREAK_FOR_NOTIFICATION = 3;
+    const DAY_BEFORE_STREAK_BREAK = 1;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -27,15 +31,15 @@ router.post("/check", async (req: Request, res: Response) => {
     let notified = 0;
 
     for (const user of users) {
-      if (user.currentStreak < 3) continue;
+      if (user.currentStreak < MIN_STREAK_FOR_NOTIFICATION) continue;
       if (!user.lastActivityDate) continue;
       if (!user.email || !user.emailVerified) continue;
 
       const lastActivity = new Date(user.lastActivityDate);
       lastActivity.setHours(0, 0, 0, 0);
-      const daysDiff = Math.floor((today.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24));
+      const daysSinceLastActivity = Math.floor((today.getTime() - lastActivity.getTime()) / MILLISECONDS_PER_DAY);
 
-      if (daysDiff === 1) {
+      if (daysSinceLastActivity === DAY_BEFORE_STREAK_BREAK) {
         try {
           await emailService.sendStreakBreakNotification(user.email, user.username, user.currentStreak);
           notified++;

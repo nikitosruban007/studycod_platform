@@ -116,16 +116,18 @@ export async function getTaskExamples(params: {
       take: 20, // Get more to filter
     });
     
-    // Filter and extract examples
+    // Filter and extract examples - ТІЛЬКИ приклади з точною темою
     const examples: TaskExample[] = [];
-    const seenTopics = new Set<string>();
+    const expectedTopicLower = params.topicTitle.toLowerCase().trim();
     
     for (const task of tasks) {
       if (examples.length >= numExamples) break;
       
-      // Skip if same topic (we want variety)
       const taskTopic = task.topic?.title || 'Unknown';
-      if (seenTopics.has(taskTopic)) continue;
+      const taskTopicLower = taskTopic.toLowerCase().trim();
+      
+      // КРИТИЧНО: Тільки приклади з точною темою
+      if (taskTopicLower !== expectedTopicLower) continue;
       
       // Prefer tasks with similar difficulty
       const taskDifus = task.difus || 0;
@@ -135,7 +137,6 @@ export async function getTaskExamples(params: {
       const example = extractTaskExample(task, taskTopic);
       if (example) {
         examples.push(example);
-        seenTopics.add(taskTopic);
       }
     }
     

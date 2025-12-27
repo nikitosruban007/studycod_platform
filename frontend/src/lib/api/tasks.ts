@@ -13,8 +13,23 @@ export async function getTask(id: number): Promise<Task> {
 }
 
 export async function generateTask(): Promise<any> {
-  const res = await api.post("/tasks/generate", {});
-  return res.data;
+  // Перевірка токена перед викликом
+  const token = localStorage.getItem("token");
+  if (!token) {
+    throw new Error("Ви не авторизовані. Будь ласка, увійдіть в систему.");
+  }
+  
+  try {
+    const res = await api.post("/tasks/generate", {});
+    return res.data;
+  } catch (error: any) {
+    // Обробка помилок авторизації
+    if (error.response?.status === 401) {
+      localStorage.removeItem("token");
+      throw new Error("Сесія закінчилась. Будь ласка, увійдіть в систему знову.");
+    }
+    throw error;
+  }
 }
 
 export async function resetTopic(topicId: number): Promise<void> {
@@ -30,7 +45,20 @@ export async function submitTask(id: number, code: string): Promise<any> {
   return res.data;
 }
 
-export async function runTask(id: number, code: string): Promise<{ output: string; stderr?: string }> {
-  const res = await api.post(`/tasks/${id}/run`, { code });
+export async function submitTaskWithMode(
+  id: number,
+  code: string,
+  mode: "TESTS" | "AI"
+): Promise<any> {
+  const res = await api.post(`/tasks/${id}/submit`, { code, mode });
+  return res.data;
+}
+
+export async function runTask(
+  id: number,
+  code: string,
+  input?: string
+): Promise<{ output: string; stderr?: string; success?: boolean }> {
+  const res = await api.post(`/tasks/${id}/run`, { code, input });
   return res.data as { output: string; stderr?: string };
 }

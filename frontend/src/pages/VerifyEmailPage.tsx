@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { verifyEmail } from "../lib/api/auth";
+import { useTranslation } from "react-i18next";
+import { verifyEmail, resendVerificationEmail } from "../lib/api/auth";
 import { Button } from "../components/ui/Button";
 import type { User } from "../types";
 
@@ -9,16 +10,20 @@ interface Props {
 }
 
 export const VerifyEmailPage: React.FC<Props> = ({ onAuth }) => {
+  const { i18n } = useTranslation();
+  const tr = (uk: string, en: string) => (i18n.language?.toLowerCase().startsWith("en") ? en : uk);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   useEffect(() => {
     const token = searchParams.get("token");
     if (!token) {
-      setError("Відсутній токен підтвердження");
+      setError(tr("Відсутній токен підтвердження", "Missing verification token"));
       setLoading(false);
       return;
     }
@@ -32,7 +37,7 @@ export const VerifyEmailPage: React.FC<Props> = ({ onAuth }) => {
           navigate("/");
         }, 2000);
       } catch (err: any) {
-        setError(err?.response?.data?.message ?? "Помилка підтвердження email");
+        setError(err?.response?.data?.message ?? tr("Помилка підтвердження email", "Email verification failed"));
       } finally {
         setLoading(false);
       }
@@ -45,7 +50,7 @@ export const VerifyEmailPage: React.FC<Props> = ({ onAuth }) => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg-base">
         <div className="text-center">
-          <div className="text-text-secondary font-mono">Підтвердження email...</div>
+          <div className="text-text-secondary font-mono">{tr("Підтвердження email...", "Verifying email...")}</div>
         </div>
       </div>
     );
@@ -60,18 +65,73 @@ export const VerifyEmailPage: React.FC<Props> = ({ onAuth }) => {
           </div>
           {success ? (
             <>
-              <h1 className="text-xl font-mono text-text-primary mb-4">Email підтверджено!</h1>
+              <h1 className="text-xl font-mono text-text-primary mb-4">{tr("Email підтверджено!", "Email verified!")}</h1>
               <p className="text-sm font-mono text-text-secondary text-center mb-4">
-                Ваш email успішно підтверджено. Зараз ви будете перенаправлені...
+                {tr(
+                  "Ваш email успішно підтверджено. Зараз ви будете перенаправлені...",
+                  "Your email has been verified. Redirecting..."
+                )}
               </p>
             </>
           ) : (
             <>
-              <h1 className="text-xl font-mono text-text-primary mb-4">Помилка підтвердження</h1>
+              <h1 className="text-xl font-mono text-text-primary mb-4">{tr("Помилка підтвердження", "Verification error")}</h1>
               <p className="text-sm font-mono text-text-secondary text-center mb-4">
-                {error || "Не вдалося підтвердити email"}
+                {error || tr("Не вдалося підтвердити email", "Failed to verify email")}
               </p>
-              <Button onClick={() => navigate("/auth")}>Повернутись до входу</Button>
+              {error?.includes("INVALID_TOKEN") || error?.includes("TOKEN_REQUIRED") || error?.includes("Відсутній токен") ? (
+                <>
+                  {resendSuccess && (
+                    <p className="text-sm font-mono text-primary text-center mb-4">
+                      {tr("Лист з підтвердженням відправлено на вашу пошту!", "Verification email sent!")}
+                    </p>
+                  )}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-mono text-text-secondary mb-1 block">
+                        {tr("Email для повторної відправки", "Email to resend")}
+                      </label>
+                      <input
+                        type="email"
+                        id="resend-email"
+                        className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast mb-2"
+                        placeholder="your@email.com"
+                        defaultValue={searchParams.get("email") || ""}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button 
+                        onClick={async () => {
+                          const emailInput = document.getElementById("resend-email") as HTMLInputElement;
+                          const email = emailInput?.value || searchParams.get("email");
+                          if (!email) {
+                            alert(tr("Будь ласка, введіть email для повторної відправки.", "Please enter an email to resend."));
+                            return;
+                          }
+                          setResending(true);
+                          setResendSuccess(false);
+                          try {
+                            await resendVerificationEmail(email);
+                            setResendSuccess(true);
+                          } catch (err: any) {
+                            alert(err?.response?.data?.message || tr("Не вдалося відправити лист", "Failed to send email"));
+                          } finally {
+                            setResending(false);
+                          }
+                        }}
+                        disabled={resending}
+                      >
+                        {resending ? tr("Відправка...", "Sending...") : tr("Відправити лист повторно", "Resend email")}
+                      </Button>
+                      <Button variant="secondary" onClick={() => navigate("/auth")}>
+                        {tr("Повернутись до входу", "Back to login")}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <Button onClick={() => navigate("/auth")}>{tr("Повернутись до входу", "Back to login")}</Button>
+              )}
             </>
           )}
         </div>

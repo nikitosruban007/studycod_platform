@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="880" viewBox="0 0 1400 880">
+  <defs>
+    <style>
+      .bg { fill:#0b0f14; }
+      .panel { fill:#0f1620; stroke:#233043; stroke-width:2; }
+      .muted { fill:#9fb3c8; font:500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .title { fill:#d6e1f0; font:800 30px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .mono { fill:#d6e1f0; font:700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .card { fill:#0b0f14; stroke:#233043; stroke-width:2; }
+      .ok { fill:#0b1510; stroke:#00ff88; stroke-width:2; }
+      .bad { fill:#170b10; stroke:#ff6b9d; stroke-width:2; }
+      .chipOk { fill:#00ff88; font:900 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .chipBad { fill:#ff6b9d; font:900 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="880"/>
+  <rect class="panel" x="40" y="30" width="1320" height="84" rx="14"/>
+  <text class="mono" x="78" y="82">Результати тесту</text>
+  <text class="muted" x="930" y="82">Учень · CONTROL · /edu/lessons/:id</text>
+
+  <rect class="panel" x="40" y="140" width="1320" height="710" rx="14"/>
+  <text class="title" x="78" y="196">Самостійна робота №1</text>
+  <text class="muted" x="78" y="230">Тест завершено. Показано правильні/неправильні відповіді по кожному питанню.</text>
+
+  <rect class="ok" x="78" y="260" width="1244" height="92" rx="14"/>
+  <text class="mono" x="110" y="306">Оцінка за тест: 8 / 12</text>
+  <text class="muted" x="110" y="334">Правильних: 4/6</text>
+
+  <!-- Q1 correct -->
+  <rect class="card" x="78" y="380" width="1244" height="130" rx="14"/>
+  <text class="mono" x="110" y="422">1. Який тип має масив int[] у Java?</text>
+  <rect class="ok" x="110" y="444" width="520" height="44" rx="12"/>
+  <text class="chipOk" x="130" y="472">✓ Відповідь: А (правильно)</text>
+  <text class="muted" x="680" y="472">Правильна: А</text>
+
+  <!-- Q2 wrong -->
+  <rect class="card" x="78" y="530" width="1244" height="160" rx="14"/>
+  <text class="mono" x="110" y="572">2. Який індекс першого елемента масиву?</text>
+  <rect class="bad" x="110" y="594" width="520" height="44" rx="12"/>
+  <text class="chipBad" x="130" y="622">✗ Твоя: Б · Правильна: А</text>
+  <text class="muted" x="680" y="622">Пояснення: індексація з 0</text>
+  <rect class="ok" x="110" y="642" width="520" height="30" rx="10"/>
+  <text class="chipOk" x="130" y="663">✓ А) 0</text>
+
+  <!-- Q3 correct -->
+  <rect class="card" x="78" y="710" width="1244" height="130" rx="14"/>
+  <text class="mono" x="110" y="752">3. Що робить Arrays.sort(a)?</text>
+  <rect class="ok" x="110" y="774" width="520" height="44" rx="12"/>
+  <text class="chipOk" x="130" y="802">✓ Відповідь: В (правильно)</text>
+  <text class="muted" x="680" y="802">Правильна: В</text>
+</svg>
+
+

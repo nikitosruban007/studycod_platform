@@ -13,7 +13,8 @@ const gradeRepo = () => AppDataSource.getRepository(Grade);
  */
 function mapTaskToDto(task: Task | null | undefined) {
   if (!task) return null;
-  const topic = (task as any).topic as Topic | undefined;
+  const taskWithRelations = task as Task & { topic?: Topic };
+  const topic = taskWithRelations.topic;
 
   return {
     id: task.id,
@@ -44,14 +45,20 @@ function mapTaskToDto(task: Task | null | undefined) {
  */
 router.get("/", authRequired, async (req: AuthRequest, res) => {
   try {
-    const where: any = { user: { id: req.userId! } };
+    if (!req.userId) {
+      return res.status(401).json({ message: "UNAUTHORIZED" });
+    }
+
+    const where: any = {
+      user: { id: req.userId },
+    };
     if (req.lang) {
-      where.task = { lang: req.lang } as any;
+      where.task = { lang: req.lang };
     }
 
     const grades = await gradeRepo().find({
       where,
-      order: { createdAt: "DESC" } as any,
+      order: { createdAt: "DESC" },
       relations: ["task", "task.topic"],
     });
 
@@ -65,7 +72,7 @@ router.get("/", authRequired, async (req: AuthRequest, res) => {
         integrityScore: isIntro ? null : (g.integrityScore ?? null),
       aiFeedback: g.aiFeedback,
       createdAt: g.createdAt,
-      task: mapTaskToDto(g.task) as any,
+      task: mapTaskToDto(g.task),
       };
     });
 

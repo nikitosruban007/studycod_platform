@@ -1,5 +1,6 @@
 import React, { Suspense, useMemo } from "react";
 import loader from "@monaco-editor/loader";
+import { useTranslation } from "react-i18next";
 
 // Налаштовуємо Monaco для використання локальної версії замість CDN
 if (typeof window !== "undefined") {
@@ -48,6 +49,8 @@ const createEditorOptions = (readOnly: boolean) => ({
 });
 
 export const CodeEditor: React.FC<Props> = React.memo(({ language, value, onChange, readOnly = false }) => {
+  const { i18n } = useTranslation();
+  const tr = (uk: string, en: string) => (i18n.language?.toLowerCase().startsWith("en") ? en : uk);
   const monacoLang = useMemo(() => (language === "JAVA" ? "java" : "python"), [language]);
   const editorOptions = useMemo(() => createEditorOptions(readOnly), [readOnly]);
 
@@ -63,7 +66,7 @@ export const CodeEditor: React.FC<Props> = React.memo(({ language, value, onChan
       <Suspense
         fallback={
           <div className="h-full w-full flex items-center justify-center bg-bg-code border border-border">
-            <div className="text-text-secondary font-mono text-sm">Завантаження редактора...</div>
+            <div className="text-text-secondary font-mono text-sm">{tr("Завантаження редактора...", "Loading editor...")}</div>
           </div>
         }
       >
@@ -76,7 +79,7 @@ export const CodeEditor: React.FC<Props> = React.memo(({ language, value, onChan
           onChange={handleChange}
           loading={
             <div className="h-full w-full flex items-center justify-center bg-bg-code border border-border">
-              <div className="text-text-secondary font-mono text-sm">Завантаження редактора...</div>
+              <div className="text-text-secondary font-mono text-sm">{tr("Завантаження редактора...", "Loading editor...")}</div>
             </div>
           }
         />

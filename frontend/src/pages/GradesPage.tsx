@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { listGrades } from "../lib/api/grades";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import type { Grade } from "../types";
 import { resetTopic } from "../lib/api/tasks";
+import { tr } from "../i18n";
 
 interface TopicWithAverage {
   topicId: number | null;
@@ -17,6 +19,7 @@ interface Props {
 }
 
 export const GradesPage: React.FC<Props> = ({ onNavigate }) => {
+  const { i18n } = useTranslation();
   const [grades, setGrades] = useState<Grade[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -62,7 +65,7 @@ export const GradesPage: React.FC<Props> = ({ onNavigate }) => {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center text-text-primary font-mono">
-        Завантаження...
+        {tr("Завантаження...", "Loading...")}
       </div>
     );
   }
@@ -86,13 +89,15 @@ export const GradesPage: React.FC<Props> = ({ onNavigate }) => {
       {/* Header */}
       <div className="border-b border-border bg-bg-surface p-4 flex items-center justify-between flex-shrink-0">
         <h1 className="text-lg font-mono text-text-primary">
-          {showAllGrades ? "Всі оцінки" : "Теми для повторення"}
+          {showAllGrades ? tr("Всі оцінки", "All grades") : tr("Теми для повторення", "Topics to review")}
         </h1>
         <button
           onClick={() => setShowAllGrades(!showAllGrades)}
           className="text-xs font-mono text-text-secondary hover:text-text-primary transition-fast px-3 py-1 border border-border hover:bg-bg-hover"
         >
-          {showAllGrades ? "Показати тільки проблемні" : "Показати всі оцінки"}
+          {showAllGrades
+            ? tr("Показати тільки проблемні", "Show only problematic")
+            : tr("Показати всі оцінки", "Show all grades")}
         </button>
       </div>
 
@@ -103,7 +108,7 @@ export const GradesPage: React.FC<Props> = ({ onNavigate }) => {
             <div className="space-y-2">
               {grades.length === 0 ? (
                 <div className="text-center text-text-muted font-mono py-8">
-                  Немає оцінок
+                  {tr("Немає оцінок", "No grades yet")}
                 </div>
               ) : (
                 grades.map((grade) => (
@@ -119,7 +124,7 @@ export const GradesPage: React.FC<Props> = ({ onNavigate }) => {
                           </div>
                         )}
                         <div className="text-xs font-mono text-text-secondary">
-                          {new Date(grade.createdAt).toLocaleDateString("uk-UA", {
+                          {new Date(grade.createdAt).toLocaleDateString(i18n.language === "uk" ? "uk-UA" : "en-US", {
                             day: "2-digit",
                             month: "2-digit",
                             year: "numeric",
@@ -149,7 +154,7 @@ export const GradesPage: React.FC<Props> = ({ onNavigate }) => {
           </div>
         ) : topicsWithLowAverage.length === 0 ? (
           <div className="h-full flex items-center justify-center text-text-muted font-mono">
-            <div className="text-lg">Всі теми завершено</div>
+            <div className="text-lg">{tr("Всі теми завершено", "All topics completed")}</div>
           </div>
         ) : (
           <div className="max-w-2xl mx-auto">
@@ -159,7 +164,8 @@ export const GradesPage: React.FC<Props> = ({ onNavigate }) => {
                   {topicsWithLowAverage[0].topicTitle}
                 </h2>
                 <div className="text-xs font-mono text-text-muted">
-                  Середня оцінка: <span className="text-accent-error">{topicsWithLowAverage[0].average}</span> / 12
+                  {tr("Середня оцінка:", "Average grade:")}{" "}
+                  <span className="text-accent-error">{topicsWithLowAverage[0].average}</span> / 12
                 </div>
               </div>
               <Button
@@ -167,7 +173,7 @@ export const GradesPage: React.FC<Props> = ({ onNavigate }) => {
                 onClick={() => handleRetryTopic(topicsWithLowAverage[0].topicId)}
                 className="w-full"
               >
-                Перепройти тему
+                {tr("Перепройти тему", "Retry topic")}
               </Button>
             </Card>
           </div>

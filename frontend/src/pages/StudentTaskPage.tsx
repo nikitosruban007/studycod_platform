@@ -1,5 +1,6 @@
 // frontend/src/pages/StudentTaskPage.tsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useNavigate } from "react-router-dom";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { Button } from "../components/ui/Button";
@@ -7,10 +8,14 @@ import { Card } from "../components/ui/Card";
 import { Modal } from "../components/ui/Modal";
 import { CodeEditor } from "../components/CodeEditor";
 import { MarkdownView } from "../components/MarkdownView";
-import { getTask, submitCode, runCode, submitQuizAnswers, type TaskWithGrade, type TestResult } from "../lib/api/edu";
-import { ArrowLeft, Play, Send, Save, Clock, FileText } from "lucide-react";
+import { getTask, submitCode, runCode, submitQuizAnswers, completeTask, getTestData, type TaskWithGrade, type TestResult } from "../lib/api/edu";
+import { ArrowLeft, Play, Send, Save, Clock, FileText, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { isDeadlineExpired } from "../utils/timezone";
+import { getMe } from "../lib/api/profile";
+import type { User } from "../types";
 
 export const StudentTaskPage: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const [task, setTask] = useState<TaskWithGrade | null>(null);
@@ -19,8 +24,12 @@ export const StudentTaskPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [running, setRunning] = useState(false);
   const [consoleOutput, setConsoleOutput] = useState("");
+
+  const [testInput, setTestInput] = useState(""); // Поле для введення тестових даних
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [testProgress, setTestProgress] = useState<Record<number, 'pending' | 'running' | 'passed' | 'failed'>>({});
+  const [isRunningTests, setIsRunningTests] = useState(false);
   const [theoryAcknowledged, setTheoryAcknowledged] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [timeStarted, setTimeStarted] = useState<Date | null>(null);
@@ -28,7 +37,13 @@ export const StudentTaskPage: React.FC = () => {
   const [quizQuestions, setQuizQuestions] = useState<any[]>([]);
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizGrade, setQuizGrade] = useState<number | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [deadlineRemaining, setDeadlineRemaining] = useState<number | null>(null);
+
+  const tr = useCallback(
+    (uk: string, en: string) => (i18n.language?.toLowerCase().startsWith("en") ? en : uk),
+    [i18n.language]
+  );
 
   // Refs для уникнення stale closures в setInterval
   const taskRef = useRef(task);
@@ -42,10 +57,44 @@ export const StudentTaskPage: React.FC = () => {
   }, [task, code]);
 
   useEffect(() => {
+    const init = async () => {
+      try {
+        const u = await getMe();
+        setUser(u);
+      } catch (error) {
+        console.error("Failed to load user:", error);
+      }
+    };
+    init();
+  }, []);
+
+  useEffect(() => {
     if (taskId) {
       loadTask();
     }
   }, [taskId]);
+
+  // Автоматичне збереження коду в localStorage при зміні
+  useEffect(() => {
+    if (!taskId || !code) return;
+    
+    // Debounce збереження - зберігаємо через 1 секунду після останньої зміни
+    const timeoutId = setTimeout(() => {
+      localStorage.setItem(`task_draft_${taskId}`, code);
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [code, taskId]);
+
+  // Збереження коду при виході зі сторінки (cleanup)
+  useEffect(() => {
+    return () => {
+      // Зберігаємо код при unmount компонента
+      if (taskId && code) {
+        localStorage.setItem(`task_draft_${taskId}`, code);
+      }
+    };
+  }, [taskId, code]);
 
   // Таймер для deadline
   useEffect(() => {
@@ -55,9 +104,10 @@ export const StudentTaskPage: React.FC = () => {
     }
 
     const updateDeadline = () => {
-      const now = new Date().getTime();
-      const deadline = new Date(task.deadline!).getTime();
-      const remaining = Math.max(0, Math.floor((deadline - now) / 1000)); // секунди
+      // Дедлайн приходить в UTC з backend
+      const deadlineUTC = new Date(task.deadline!).getTime();
+      const nowUTC = new Date().getTime(); // Поточний час в UTC
+      const remaining = Math.max(0, Math.floor((deadlineUTC - nowUTC) / 1000)); // секунди
       
       if (remaining > 0) {
         setDeadlineRemaining(remaining);
@@ -97,7 +147,7 @@ export const StudentTaskPage: React.FC = () => {
       } else {
         setTimeRemaining(0);
         clearInterval(interval);
-        alert("Час вийшов! Завдання буде автоматично відправлено.");
+        alert(t("timeUpAutoSubmit"));
         // Автоматично відправляємо завдання через ref
         if (currentTask && currentCode && handleSubmitRef.current) {
           handleSubmitRef.current();
@@ -124,32 +174,89 @@ export const StudentTaskPage: React.FC = () => {
     try {
       const data = await getTask(parseInt(taskId, 10));
       setTask(data);
-      // Використовуємо збережений код, якщо є, інакше шаблон
+      
+      // ВАЖЛИВО: Якщо є grade і submittedCode, використовуємо submittedCode (пройдене завдання)
+      // Інакше перевіряємо localStorage для draft коду, потім збережений код з сервера, потім шаблон
+      const submittedCode = data.grade?.submittedCode;
+      const draftCode = localStorage.getItem(`task_draft_${taskId}`);
       const savedCode = (data as any).savedCode;
-      setCode(savedCode || data.template);
-      setConsoleOutput("");
+      
+      // Пріоритет: submittedCode > draftCode > savedCode > template
+      setCode(submittedCode || draftCode || savedCode || data.template);
+      
+      // Якщо є grade, показуємо результати тестів (використовуємо збережені результати)
+      if (data.grade && submittedCode) {
+        // Використовуємо збережені результати тестів з бази даних (якщо є)
+        if (data.grade.testResults && Array.isArray(data.grade.testResults) && data.grade.testResults.length > 0) {
+          // Конвертуємо збережені результати в формат TestResult
+          const testResults: TestResult[] = data.grade.testResults.map((result: any) => ({
+            input: result.input || "",
+            expectedOutput: result.expected || result.expectedOutput || "",
+            actualOutput: result.actual || result.actualOutput || "",
+            passed: result.passed || false,
+            error: result.stderr || result.error || null,
+          }));
+          
+          setTestResults(testResults);
+          
+          // Форматуємо результати для відображення в консолі
+          let consoleText = `${t("testResultsHeader", { passed: data.grade.testsPassed, total: data.grade.testsTotal })}\n\n`;
+          testResults.forEach((result, index) => {
+            consoleText += `${t("testCaseLine", { index: index + 1, status: result.passed ? t("passed") : t("failed") })}\n`;
+            consoleText += `${t("input")}: ${result.input}\n`;
+            consoleText += `${t("expected")}: ${result.expectedOutput}\n`;
+            consoleText += `${t("actual")}: ${result.actualOutput}\n`;
+            if (result.error) {
+              consoleText += `${t("error")}: ${result.error}\n`;
+            }
+            consoleText += '\n';
+          });
+          
+          setConsoleOutput(consoleText);
+        } else {
+          // Якщо збережених результатів немає, показуємо базову інформацію
+          setConsoleOutput(
+            t("gradeSummary", {
+              passed: data.grade.testsPassed,
+              total: data.grade.testsTotal,
+              grade: data.grade.total,
+            })
+          );
+        }
+      } else {
+        setConsoleOutput("");
+      }
       
       // Завантажуємо quiz питання якщо є (для контрольної роботи)
       if (data.lesson.type === "CONTROL" && (data.lesson as any).quizJson) {
         try {
           const quiz = JSON.parse((data.lesson as any).quizJson);
           setQuizQuestions(quiz);
-          // Завантажуємо збережені відповіді з localStorage
-          const savedAnswers = localStorage.getItem(`quiz_answers_${taskId}`);
-          if (savedAnswers) {
-            setQuizAnswers(JSON.parse(savedAnswers));
-            // Оновлюємо timestamp
-            localStorage.setItem(`quiz_answers_${taskId}_timestamp`, Date.now().toString());
-          }
-          // Перевіряємо, чи тест вже відправлено
-          const submitted = localStorage.getItem(`quiz_submitted_${taskId}`);
-          if (submitted === "true") {
+          
+          // ВАЖЛИВО: Використовуємо дані з сервера як source of truth
+          const serverQuizSubmitted = (data.lesson as any).quizSubmitted === true;
+          const serverQuizGrade = (data.lesson as any).quizGrade !== null && (data.lesson as any).quizGrade !== undefined
+            ? Number((data.lesson as any).quizGrade)
+            : null;
+          
+          if (serverQuizSubmitted) {
+            // Тест вже відправлено на сервері - використовуємо дані з сервера
             setQuizSubmitted(true);
-            // Завантажуємо оцінку за тест
-            const grade = localStorage.getItem(`quiz_grade_${taskId}`);
-            if (grade) {
-              setQuizGrade(parseFloat(grade));
+            setQuizGrade(serverQuizGrade);
+            
+            // Очищаємо localStorage, щоб уникнути конфліктів
+            localStorage.removeItem(`quiz_submitted_${taskId}`);
+            localStorage.removeItem(`quiz_answers_${taskId}`);
+          } else {
+            // Тест ще не відправлено - завантажуємо збережені відповіді з localStorage (якщо є)
+            const savedAnswers = localStorage.getItem(`quiz_answers_${taskId}`);
+            if (savedAnswers) {
+              setQuizAnswers(JSON.parse(savedAnswers));
+              // Оновлюємо timestamp
+              localStorage.setItem(`quiz_answers_${taskId}_timestamp`, Date.now().toString());
             }
+            setQuizSubmitted(false);
+            setQuizGrade(null);
           }
         } catch (e) {
           if (import.meta.env.DEV) {
@@ -159,6 +266,8 @@ export const StudentTaskPage: React.FC = () => {
         }
       } else {
         setQuizQuestions([]);
+        setQuizSubmitted(false);
+        setQuizGrade(null);
       }
       
       // Ініціалізуємо таймер для контрольної роботи
@@ -196,20 +305,39 @@ export const StudentTaskPage: React.FC = () => {
 
   const handleRun = async () => {
     if (!taskId || !code.trim()) {
-      setConsoleOutput("Введіть код для запуску");
+      setConsoleOutput(t("enterCodeToRun"));
       return;
     }
 
     setRunning(true);
-    setConsoleOutput("Запуск коду...");
+    setConsoleOutput(t("runningCode"));
     try {
-      const result = await runCode(parseInt(taskId, 10), code);
-      setConsoleOutput(result.output || result.stderr || "Немає виводу");
+      // Передаємо ввід через stdin
+      const result = await runCode(parseInt(taskId, 10), code, testInput || undefined);
+      
+      // Форматуємо вивід: показуємо тільки вихідні дані (вхідні дані вже відображаються в полі вводу)
+      let output = "";
+      
+      // Фільтруємо stderr від системних повідомлень Java
+      let filteredStderr = result.stderr || "";
+      filteredStderr = filteredStderr
+        .split('\n')
+        .filter(line => !line.includes('Picked up JAVA_TOOL_OPTIONS'))
+        .filter(line => !line.includes('Picked up _JAVA_OPTIONS'))
+        .join('\n')
+        .trim();
+      
+      output += result.output || filteredStderr || t("noOutput");
+      if (filteredStderr && result.output) {
+        output += `\n\n${t("errors")}:\n${filteredStderr}`;
+      }
+      
+      setConsoleOutput(output);
     } catch (error: any) {
       if (import.meta.env.DEV) {
         console.error("Failed to run:", error);
       }
-      setConsoleOutput(error.response?.data?.message || "Помилка запуску коду");
+      setConsoleOutput(error.response?.data?.message || t("runError"));
     } finally {
       setRunning(false);
     }
@@ -220,7 +348,7 @@ export const StudentTaskPage: React.FC = () => {
     
     // Перевіряємо, чи всі питання відповідені
     if (Object.keys(quizAnswers).length < quizQuestions.length) {
-      alert("Будь ласка, відповідьте на всі питання");
+      alert(t("pleaseAnswerAllQuestions"));
       return;
     }
 
@@ -238,54 +366,307 @@ export const StudentTaskPage: React.FC = () => {
       localStorage.setItem(`quiz_grade_${taskId}`, result.grade.theoryGrade.toString());
       localStorage.setItem(`quiz_grade_${taskId}_timestamp`, now);
       
-      alert(`Тест завершено! Оцінка: ${result.grade.theoryGrade}/12 (${result.grade.correctAnswers}/${result.grade.totalQuestions} правильних відповідей)`);
+      alert(
+        t("quizCompletedWithGrade", {
+          grade: result.grade.theoryGrade,
+          correct: result.grade.correctAnswers,
+          total: result.grade.totalQuestions,
+        })
+      );
     } catch (error: any) {
       if (import.meta.env.DEV) {
         console.error("Failed to submit quiz:", error);
       }
-      alert(error.response?.data?.message || "Не вдалося відправити тест");
+      if (error.response?.status === 409 && error.response?.data?.message === "QUIZ_ALREADY_SUBMITTED") {
+        alert(t("quizAlreadySubmitted"));
+        // Re-fetch task to sync state from server
+        await loadTask();
+      } else {
+        alert(error.response?.data?.message || t("failedToSubmitTest"));
+      }
     }
   };
 
+  // Функція для порівняння виводу (копія з backend)
+  const compareOutput = (actual: string, expected: string): boolean => {
+    const normalize = (str: string) => {
+      const normalized = str.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+      const lines = normalized.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+      return lines.join("\n");
+    };
+
+    const normalizedActual = normalize(actual);
+    const normalizedExpected = normalize(expected);
+
+    if (normalizedActual === normalizedExpected) return true;
+
+    const noSpacesActual = normalizedActual.replace(/\s+/g, "");
+    const noSpacesExpected = normalizedExpected.replace(/\s+/g, "");
+    if (noSpacesActual === noSpacesExpected) return true;
+
+    const normalizeCommas = (str: string) => str.replace(/,\s+/g, ",").replace(/\s+,/g, ",");
+    if (normalizeCommas(normalizedActual) === normalizeCommas(normalizedExpected)) return true;
+
+    return false;
+  };
+
+  // Функція для виконання тестів з показом прогресу
+  const runTestsWithProgress = useCallback(async (taskIdNum: number, codeToTest: string): Promise<TestResult[]> => {
+    setIsRunningTests(true);
+    const results: TestResult[] = [];
+    
+    try {
+      // Отримуємо тестові дані
+      const { testData } = await getTestData(taskIdNum);
+      
+      // Ініціалізуємо прогрес для всіх тестів
+      const initialProgress: Record<number, 'pending' | 'running' | 'passed' | 'failed'> = {};
+      testData.forEach((test) => {
+        initialProgress[test.id] = 'pending';
+      });
+      setTestProgress(initialProgress);
+      
+      // Виконуємо тести ПАРАЛЕЛЬНО з одночасним оновленням анімації
+      // Спочатку встановлюємо всі тести в статус "running" одночасно
+      const runningProgress: Record<number, 'running'> = {};
+      testData.forEach((test) => {
+        runningProgress[test.id] = 'running';
+      });
+      setTestProgress(runningProgress);
+      
+      // Даємо React час оновити UI перед початком виконання
+      await new Promise(resolve => requestAnimationFrame(() => {
+        requestAnimationFrame(resolve);
+      }));
+      
+      // Запускаємо всі тести паралельно
+      const testPromises = testData.map(async (test) => {
+        try {
+          // Виконуємо код з вхідними даними тесту ПАРАЛЕЛЬНО
+          const result = await runCode(taskIdNum, codeToTest, test.input);
+          
+          // Порівнюємо результат
+          const passed = compareOutput(result.output || "", test.expectedOutput);
+          
+          // Встановлюємо статус "passed" або "failed" одразу після завершення
+          setTestProgress(prev => ({ ...prev, [test.id]: passed ? 'passed' : 'failed' }));
+          
+          // Повертаємо результат
+          return {
+            input: test.input,
+            expected: test.expectedOutput,
+            actual: result.output || "",
+            stderr: result.stderr,
+            passed,
+          };
+        } catch (error: any) {
+          // Помилка виконання
+          setTestProgress(prev => ({ ...prev, [test.id]: 'failed' }));
+          return {
+            input: test.input,
+            expected: test.expectedOutput,
+            actual: "",
+            stderr: error.response?.data?.message || "Помилка виконання",
+            passed: false,
+          };
+        }
+      });
+      
+      // Чекаємо завершення всіх тестів
+      const testResults = await Promise.all(testPromises);
+      results.push(...testResults);
+    } finally {
+      setIsRunningTests(false);
+    }
+    
+    return results;
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     if (!taskId || !code.trim()) {
-      alert("Введіть код");
+      alert(t("enterCode"));
       return;
     }
 
     // Перевірка перед відправкою
     if (task?.isClosed) {
-      alert("Завдання закрите. Неможливо відправити код.");
+      alert(t("taskClosedCannotSubmit"));
       return;
     }
-    if (task?.deadline && new Date(task.deadline) < new Date()) {
-      alert("Термін здачі завдання минув. Неможливо відправити код.");
+    // Перевірка дедлайну в UTC
+    if (task?.deadline && isDeadlineExpired(task.deadline)) {
+      alert(t("deadlinePassedCannotSubmit"));
       return;
     }
     if (task?.maxAttempts && task.attemptsUsed !== undefined && task.attemptsUsed >= task.maxAttempts) {
-      alert(`Вичерпано всі спроби (${task.maxAttempts}). Неможливо відправити код.`);
+      alert(t("attemptsExhaustedCannotSubmit", { maxAttempts: task.maxAttempts }));
       return;
     }
 
     setSubmitting(true);
-    setConsoleOutput("Перевірка коду...");
+    setTestResults([]);
+    setConsoleOutput(t("checkingCode"));
+    
     try {
+      // Спочатку виконуємо тести на фронтенді для показу прогресу
+      const localTestResults = await runTestsWithProgress(parseInt(taskId, 10), code);
+      setTestResults(localTestResults);
+      
+      // Тепер відправляємо на бекенд для збереження
       const result = await submitCode(parseInt(taskId, 10), code);
-      setTestResults(result.testResults);
+      
+      // Видаляємо draft код з localStorage після успішної відправки
+      if (taskId) {
+        localStorage.removeItem(`task_draft_${taskId}`);
+      }
+      
+      // Використовуємо результати з бекенду (як source of truth)
+      const finalTestResults = result.testResults || localTestResults;
+      setTestResults(finalTestResults);
+      
+      // Оновлюємо прогрес на основі результатів з бекенду
+      // Отримуємо тестові дані для маппінгу результатів
+      const { testData } = await getTestData(parseInt(taskId, 10));
+      const updatedProgress: Record<number, 'pending' | 'running' | 'passed' | 'failed'> = {};
+      
+      // Маппимо результати з бекенду до testProgress за input (більш надійно, ніж за індексом)
+      finalTestResults.forEach((testResult) => {
+        // Знаходимо тест за input
+        const test = testData.find(t => t.input === testResult.input);
+        if (test) {
+          updatedProgress[test.id] = testResult.passed ? 'passed' : 'failed';
+        }
+      });
+      
+      // Оновлюємо прогрес тільки якщо є результати
+      if (Object.keys(updatedProgress).length > 0) {
+        setTestProgress(updatedProgress);
+      }
+      
       setShowResults(true);
-      setConsoleOutput(`Перевірка завершена. Пройдено тестів: ${result.grade.testsPassed}/${result.grade.testsTotal}. Оцінка: ${result.grade.total}/12`);
+      
+      // Перевіряємо чи завдання потребує ручної перевірки
+      if (result.requiresManualReview) {
+        setConsoleOutput(t('taskSubmittedForReview'));
+        alert(t('taskSubmittedForReview'));
+        await loadTask(); // Reload to get updated grade
+        setSubmitting(false);
+        return;
+      }
+      
+      if (result.grade.total !== null) {
+        setConsoleOutput(`${t('reviewCompleted')}: ${result.grade.testsPassed}/${result.grade.testsTotal}. ${t('gradeOutOf')}: ${result.grade.total}/12`);
+      } else {
+        setConsoleOutput(t('taskSubmittedForReview'));
+      }
       await loadTask(); // Reload to get updated grade
     } catch (error: any) {
       if (import.meta.env.DEV) {
         console.error("Failed to submit:", error);
       }
-      const errorMessage = error.response?.data?.message || "Не вдалося відправити код";
+      const errorMessage = error.response?.data?.message || t('failedToSubmit');
       setConsoleOutput(errorMessage);
       alert(errorMessage);
     } finally {
       setSubmitting(false);
     }
-  }, [taskId, code, task?.isClosed, task?.deadline, task?.maxAttempts, task?.attemptsUsed]);
+  }, [taskId, code, task?.isClosed, task?.deadline, task?.maxAttempts, task?.attemptsUsed, loadTask, t, runTestsWithProgress]);
+
+  const handleComplete = useCallback(async () => {
+    if (!taskId || !code.trim()) {
+      alert(t("enterCode"));
+      return;
+    }
+
+    // Перевірка перед завершенням
+    if (task?.isClosed) {
+      alert(t("taskClosedCannotComplete"));
+      return;
+    }
+    if (task?.deadline && isDeadlineExpired(task.deadline)) {
+      alert(t("deadlinePassedCannotComplete"));
+      return;
+    }
+    if (task?.grade?.isCompleted) {
+      alert(t("taskLockedManualGrade"));
+      return;
+    }
+
+    if (!confirm(t("confirmCompleteEarly"))) {
+      return;
+    }
+
+    setSubmitting(true);
+    setTestResults([]);
+    setConsoleOutput(t("completingTaskRunningFinalTest"));
+    
+    try {
+      // Спочатку виконуємо тести на фронтенді для показу прогресу
+      const localTestResults = await runTestsWithProgress(parseInt(taskId, 10), code);
+      setTestResults(localTestResults);
+      
+      // Тепер відправляємо на бекенд для збереження
+      const result = await completeTask(parseInt(taskId, 10), code);
+      
+      // Видаляємо draft код з localStorage після успішного завершення
+      if (taskId) {
+        localStorage.removeItem(`task_draft_${taskId}`);
+      }
+      
+      // Використовуємо результати з бекенду (як source of truth)
+      const finalTestResults = result.testResults || localTestResults;
+      setTestResults(finalTestResults);
+      
+      // Оновлюємо прогрес на основі результатів з бекенду
+      // Отримуємо тестові дані для маппінгу результатів
+      const { testData } = await getTestData(parseInt(taskId, 10));
+      const updatedProgress: Record<number, 'pending' | 'running' | 'passed' | 'failed'> = {};
+      
+      // Маппимо результати з бекенду до testProgress за input (більш надійно, ніж за індексом)
+      finalTestResults.forEach((testResult) => {
+        // Знаходимо тест за input
+        const test = testData.find(t => t.input === testResult.input);
+        if (test) {
+          updatedProgress[test.id] = testResult.passed ? 'passed' : 'failed';
+        }
+      });
+      
+      // Оновлюємо прогрес тільки якщо є результати
+      if (Object.keys(updatedProgress).length > 0) {
+        setTestProgress(updatedProgress);
+      }
+      
+      setShowResults(true);
+      
+      if (result.requiresManualReview) {
+        setConsoleOutput(t("taskCompletedEarlySent"));
+        alert(t("taskCompletedEarlySent"));
+      } else if (result.grade.total !== null) {
+        setConsoleOutput(
+          t("taskCompletedEarlyDetailed", {
+            passed: result.grade.testsPassed,
+            total: result.grade.testsTotal,
+            grade: result.grade.total,
+          })
+        );
+        alert(t("taskCompletedEarlyWithGrade", { grade: result.grade.total }));
+      } else {
+        setConsoleOutput(t("taskCompletedEarly"));
+        alert(t("taskCompletedEarly"));
+      }
+      
+      await loadTask(); // Reload to get updated grade
+    } catch (error: any) {
+      if (import.meta.env.DEV) {
+        console.error("Failed to complete task:", error);
+      }
+      const errorMessage = error.response?.data?.message || t("failedToCompleteTask");
+      setConsoleOutput(errorMessage);
+      alert(errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [taskId, code, task?.isClosed, task?.deadline, task?.grade?.isCompleted, loadTask, t, runTestsWithProgress]);
 
   // Оновлюємо ref для handleSubmit
   useEffect(() => {
@@ -313,9 +694,10 @@ export const StudentTaskPage: React.FC = () => {
   // Визначаємо, чи можна редагувати код (викликаємо ДО умовних return)
   const canEdit = useMemo(() => {
     if (!task) return false;
+    if (task.grade?.isCompleted) return false; // Завдання завершено достроково
     if (task.grade && task.grade.total >= 6) return false; // Якщо оцінка >= 6, не можна редагувати
     if (task.isClosed) return false; // Завдання закрите
-    if (task.deadline && new Date(task.deadline) < new Date()) return false; // Deadline пройшов
+    if (task.deadline && isDeadlineExpired(task.deadline)) return false; // Deadline пройшов (перевірка в UTC)
     if (task.maxAttempts && task.attemptsUsed !== undefined && task.attemptsUsed >= task.maxAttempts) return false; // Вичерпано спроби
     return true;
   }, [task?.grade, task?.isClosed, task?.deadline, task?.maxAttempts, task?.attemptsUsed, task]);
@@ -323,7 +705,7 @@ export const StudentTaskPage: React.FC = () => {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center text-text-primary font-mono">
-        Завантаження...
+        {t("loading")}
       </div>
     );
   }
@@ -331,7 +713,7 @@ export const StudentTaskPage: React.FC = () => {
   if (!task) {
     return (
       <div className="h-full flex items-center justify-center text-text-primary font-mono">
-        Завдання не знайдено
+        {t("taskNotFound")}
       </div>
     );
   }
@@ -360,14 +742,21 @@ export const StudentTaskPage: React.FC = () => {
                 }}
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                Назад
+                {t("back")}
               </Button>
               <div>
                 <h1 className="text-lg font-mono text-text-primary mb-1">{task.title}</h1>
                 <div className="text-xs font-mono text-text-muted flex items-center gap-2">
-                  <span>{task.lesson.type === "LESSON" ? "Урок" : "Контрольна"} · {task.language}</span>
+                  <span>
+                    {task.lesson.type === "LESSON"
+                      ? t("lesson")
+                      : task.lesson.type === "TOPIC"
+                      ? t("topic")
+                      : t("controlWork")}{" "}
+                    · {task.language}
+                  </span>
                   {task.testDataCount !== undefined && (
-                    <span className="text-text-secondary">· Тестів: {task.testDataCount}</span>
+                    <span className="text-text-secondary">· {t("tests")}: {task.testDataCount}</span>
                   )}
                 </div>
               </div>
@@ -389,23 +778,23 @@ export const StudentTaskPage: React.FC = () => {
                 }`}>
                   <Clock className="w-4 h-4 mr-1" />
                   {deadlineRemaining > 3600 
-                    ? `${Math.floor(deadlineRemaining / 3600)} год ${Math.floor((deadlineRemaining % 3600) / 60)} хв`
+                    ? t("timeHhMm", { h: Math.floor(deadlineRemaining / 3600), m: Math.floor((deadlineRemaining % 3600) / 60) })
                     : deadlineRemaining > 60
-                    ? `${Math.floor(deadlineRemaining / 60)} хв`
-                    : `${deadlineRemaining} сек`
+                    ? t("timeMm", { m: Math.floor(deadlineRemaining / 60) })
+                    : t("timeSs", { s: deadlineRemaining })
                   }
                 </div>
               )}
               {/* Спроби */}
               {task.maxAttempts !== undefined && task.attemptsUsed !== undefined && (
                 <div className="text-xs font-mono text-text-secondary mr-4">
-                  Спроб: {task.attemptsUsed}/{task.maxAttempts}
+                  {t("attempts")}: {task.attemptsUsed}/{task.maxAttempts}
                 </div>
               )}
               {/* Статус закриття */}
               {task.isClosed && (
                 <div className="text-xs font-mono text-accent-error mr-4">
-                  Завдання закрите
+                  {t("taskClosed")}
                 </div>
               )}
               {task.grade && (
@@ -415,28 +804,52 @@ export const StudentTaskPage: React.FC = () => {
                   task.grade.total >= 4 ? "text-yellow-500" :
                   "text-accent-error"
                 }`}>
-                  Оцінка: {task.grade.total}/12
+                  {t("grade")}: {task.grade.total}/12
                 </div>
               )}
               {theoryAcknowledged && (
                 <>
                   <Button
                     variant="ghost"
+                    onClick={() => {
+                      // Повернутися до теорії
+                      setTheoryAcknowledged(false);
+                    }}
+                    className="text-xs"
+                  >
+                  <FileText className="w-3 h-3 mr-1" /> {t("theory")}
+                  </Button>
+                  <Button
+                    variant="ghost"
                     onClick={handleRun}
                     disabled={!canEdit || running}
                     className="text-xs"
                   >
-                    <Play className="w-3 h-3 mr-1" /> Запустити
+                  <Play className="w-3 h-3 mr-1" /> {tr("Запустити", "Run")}
                   </Button>
                   <Button
                     variant="primary"
                     onClick={handleSubmit}
-                    disabled={!canEdit || submitting}
+                    disabled={!canEdit || submitting || task.grade?.isCompleted}
                     className="text-xs"
                   >
                     <Send className="w-3 h-3 mr-1" />
-                    {submitting ? "Перевірка..." : "Відправити"}
+                  {submitting ? tr("Перевірка...", "Checking...") : tr("Відправити", "Submit")}
                   </Button>
+                  {canEdit && !task.grade?.isCompleted && (
+                    <Button
+                      variant="ghost"
+                      onClick={handleComplete}
+                      disabled={submitting}
+                      className="text-xs border border-accent-warn text-accent-warn hover:bg-accent-warn/10"
+                    title={tr(
+                      "Завершити завдання достроково (закриє можливість редагування)",
+                      "Complete the task early (will disable editing)"
+                    )}
+                    >
+                    {tr("✓ Завершити", "✓ Complete")}
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -455,23 +868,26 @@ export const StudentTaskPage: React.FC = () => {
                 onClick={() => navigate(-1)}
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                Назад
+                {t("back")}
               </Button>
               <h1 className="text-lg font-mono text-text-primary">{task.title}</h1>
             </div>
           </div>
               <div className="flex-1 overflow-y-auto p-8 pb-24">
                 <div className="max-w-4xl mx-auto">
-                  <h2 className="text-2xl font-mono text-text-primary mb-6">Теорія</h2>
+                  <h2 className="text-2xl font-mono text-text-primary mb-6">{t("theory")}</h2>
                   <div className="prose prose-invert max-w-none text-text-secondary font-mono">
-                    <MarkdownView content={task.lesson.theory} />
+                    <MarkdownView content={task.lesson.theory || ""} />
                   </div>
                 </div>
               </div>
               <div className="bg-bg-surface p-4 flex-shrink-0 fixed bottom-0 left-0 right-0 z-30 shadow-lg">
                 <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
                   <p className="text-xs font-mono text-text-secondary flex-1">
-                    Після прочитання теорії ви зможете перейти до практичного завдання
+                    {tr(
+                      "Після прочитання теорії ви зможете перейти до практичного завдання",
+                      "After reading theory you can proceed to the practice task"
+                    )}
                   </p>
                   <Button
                     variant="primary"
@@ -481,31 +897,37 @@ export const StudentTaskPage: React.FC = () => {
                     }}
                     className="text-base px-8 py-3 font-semibold whitespace-nowrap shadow-md hover:shadow-lg transition-all"
                   >
-                    ✓ Я прочитав теорію
+                    {tr("✓ Я прочитав теорію", "✓ I have read the theory")}
                   </Button>
                 </div>
               </div>
             </div>
       ) : (
-        <Group direction="horizontal" className="flex-1 overflow-hidden">
+        <Group className="flex-1 overflow-hidden">
             {/* Left: Quiz (for control works) or Task Description */}
             <Panel defaultSize={25} minSize={15} maxSize={60} className="flex flex-col overflow-hidden bg-bg-surface border-r border-border">
               <div className="p-3 border-b border-border flex items-center justify-between flex-shrink-0">
                 <div className="text-sm font-mono text-text-primary flex items-center gap-2">
                   <FileText className="w-4 h-4" />
-                  {task.lesson.type === "CONTROL" && quizQuestions.length > 0 ? "Теоретична частина" : "Завдання"}
+                  {task.lesson.type === "CONTROL" && quizQuestions.length > 0
+                    ? tr("Теоретична частина", "Theory part")
+                    : t("task")}
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
                 {task.lesson.type === "CONTROL" && quizQuestions.length > 0 ? (
                   <div className="space-y-4">
                     <div className="mb-4 pb-3 border-b border-border">
-                      <h3 className="text-lg font-mono text-text-primary mb-1">Теоретична частина</h3>
+                      <h3 className="text-lg font-mono text-text-primary mb-1">{tr("Теоретична частина", "Theory part")}</h3>
                       <p className="text-xs text-text-secondary">
-                        Відповідьте на всі питання. Після відправки змінити відповіді буде неможливо.
+                        {tr(
+                          "Відповідьте на всі питання. Після відправки змінити відповіді буде неможливо.",
+                          "Answer all questions. After submitting, you will not be able to change your answers."
+                        )}
                       </p>
                       <div className="mt-2 text-xs text-text-muted">
-                        Прогрес: {Object.keys(quizAnswers).length} / {quizQuestions.length} питань
+                        {tr("Progress", "Progress")}: {Object.keys(quizAnswers).length} / {quizQuestions.length}{" "}
+                        {tr("питань", "questions")}
                       </div>
                     </div>
                     {quizQuestions.map((q: any, index: number) => (
@@ -529,7 +951,7 @@ export const StudentTaskPage: React.FC = () => {
                               {index + 1} / {quizQuestions.length}
                             </span>
                             {quizAnswers[index] && !quizSubmitted && (
-                              <span className="text-xs text-primary">✓ Відповідь вибрано</span>
+                              <span className="text-xs text-primary">{tr("✓ Відповідь вибрано", "✓ Answer selected")}</span>
                             )}
                           </div>
                           <div className="text-sm font-mono text-text-primary">
@@ -594,10 +1016,12 @@ export const StudentTaskPage: React.FC = () => {
                           <div className="text-sm text-text-secondary">
                             {Object.keys(quizAnswers).length < quizQuestions.length ? (
                               <span className="text-accent-warn">
-                                Залишилось відповісти на {quizQuestions.length - Object.keys(quizAnswers).length} питань
+                                {tr("Залишилось відповісти на", "Remaining")}{" "}
+                                {quizQuestions.length - Object.keys(quizAnswers).length}{" "}
+                                {tr("питань", "questions")}
                               </span>
                             ) : (
-                              <span className="text-accent-success">Всі питання відповідені</span>
+                              <span className="text-accent-success">{tr("Всі питання відповідені", "All questions answered")}</span>
                             )}
                           </div>
                           <Button
@@ -607,7 +1031,7 @@ export const StudentTaskPage: React.FC = () => {
                             className="text-sm px-6 py-2 font-semibold"
                           >
                             <Send className="w-4 h-4 mr-2" />
-                            Відправити тест
+                            {tr("Відправити тест", "Submit quiz")}
                           </Button>
                         </div>
                       </div>
@@ -624,10 +1048,12 @@ export const StudentTaskPage: React.FC = () => {
                             {quizGrade}/12
                           </div>
                           <div className="text-sm text-text-secondary mb-4">
-                            Оцінка за теоретичну частину
+                            {tr("Оцінка за теоретичну частину", "Theory part grade")}
                           </div>
                           <div className="text-xs text-text-muted">
-                            Правильних відповідей: {Object.keys(quizAnswers).filter(i => quizQuestions[parseInt(i)]?.correct === quizAnswers[parseInt(i)]).length} з {quizQuestions.length}
+                            {tr("Correct answers", "Correct answers")}:{" "}
+                            {Object.keys(quizAnswers).filter(i => quizQuestions[parseInt(i)]?.correct === quizAnswers[parseInt(i)]).length}{" "}
+                            {tr("з", "of")} {quizQuestions.length}
                           </div>
                         </div>
                       </Card>
@@ -663,18 +1089,69 @@ export const StudentTaskPage: React.FC = () => {
               </div>
             </Separator>
 
-            {/* Right: Console */}
+            {/* Right: Console with Input/Output */}
             <Panel defaultSize={25} minSize={10} maxSize={50} className="flex flex-col overflow-hidden bg-bg-surface border-l border-border">
               <div className="p-3 border-b border-border flex items-center justify-between flex-shrink-0">
                 <div className="text-sm font-mono text-text-primary flex items-center gap-2">
-                  <Play className="w-4 h-4" /> Консоль
+                  <Play className="w-4 h-4" /> {tr("Консоль", "Console")}
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="font-mono text-xs text-text-secondary whitespace-pre-wrap">
-                  {consoleOutput || (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Input section */}
+                <div className="border-b border-border p-3 flex-shrink-0">
+                  <div className="text-xs font-mono text-text-secondary mb-2">{tr("Вхідні дані:", "Input:")}</div>
+                  <textarea
+                    value={testInput}
+                    onChange={(e) => setTestInput(e.target.value)}
+                    placeholder={tr("Введіть тестові дані...", "Enter test input...")}
+                    className="w-full h-24 bg-bg-code border border-border rounded p-2 font-mono text-xs text-text-primary resize-none focus:outline-none focus:border-primary"
+                    spellCheck={false}
+                  />
+                </div>
+                {/* Output section */}
+                <div className="flex-1 overflow-y-auto p-4">
+                  {/* Показуємо прогрес тестів під час виконання */}
+                  {isRunningTests && Object.keys(testProgress).length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-xs font-mono text-text-primary mb-3">{tr("Проходження тестів:", "Test progress:")}</div>
+                      {Object.entries(testProgress)
+                        .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                        .map(([testId, status], index) => (
+                          <div key={testId} className="flex items-center gap-2 text-xs font-mono">
+                            {status === 'pending' && (
+                              <span className="text-text-muted">{tr("Тест", "Test")} {index + 1}</span>
+                            )}
+                            {status === 'running' && (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                                <span className="text-text-primary">{tr("Тест", "Test")} {index + 1}</span>
+                              </>
+                            )}
+                            {status === 'passed' && (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-accent-success" />
+                                <span className="text-accent-success">{tr("Тест", "Test")} {index + 1}</span>
+                              </>
+                            )}
+                            {status === 'failed' && (
+                              <>
+                                <XCircle className="w-3 h-3 text-accent-error" />
+                                <span className="text-accent-error">{tr("Тест", "Test")} {index + 1}</span>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  ) : consoleOutput ? (
+                    <pre 
+                      className="text-xs text-text-secondary whitespace-pre-wrap m-0"
+                      style={{ fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", "Courier New", monospace' }}
+                    >
+                      {consoleOutput}
+                    </pre>
+                  ) : (
                     <span className="text-text-muted italic">
-                      // Результат виконання з'явиться тут...
+                      {tr("// Результат виконання з'явиться тут...", "// Program output will appear here...")}
                     </span>
                   )}
                 </div>
@@ -688,35 +1165,35 @@ export const StudentTaskPage: React.FC = () => {
         <Modal 
           open={showResults}
           onClose={() => setShowResults(false)}
-          title="Результати тестування"
+          title={tr("Результати тестування", "Test results")}
           showCloseButton={false}
         >
           <div className="p-6 max-w-4xl max-h-[80vh] overflow-y-auto">
-            <h2 className="text-xl font-mono text-text-primary mb-4">Результати тестування</h2>
+            <h2 className="text-xl font-mono text-text-primary mb-4">{tr("Результати тестування", "Test results")}</h2>
             <div className="space-y-3">
               {testResults.map((result, index) => (
                 <Card key={index} className="p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-mono text-text-primary">Тест {index + 1}</span>
+                    <span className="text-sm font-mono text-text-primary">{tr("Тест", "Test")} {index + 1}</span>
                     {result.passed ? (
-                      <span className="text-xs text-accent-success">✓ Пройдено</span>
+                      <span className="text-xs text-accent-success">{tr("✓ Пройдено", "✓ Passed")}</span>
                     ) : (
-                      <span className="text-xs text-accent-error">✗ Не пройдено</span>
+                      <span className="text-xs text-accent-error">{tr("✗ Не пройдено", "✗ Failed")}</span>
                     )}
                   </div>
                   <div className="text-xs text-text-secondary space-y-1">
                     <div>
-                      <strong>Вхід:</strong> {result.input}
+                      <strong>{tr("Вхід", "Input")}:</strong> {result.input}
                     </div>
                     <div>
-                      <strong>Очікувано:</strong> {result.expected}
+                      <strong>{tr("Очікувано", "Expected")}:</strong> {result.expected}
                     </div>
                     <div>
-                      <strong>Отримано:</strong> {result.actual}
+                      <strong>{tr("Отримано", "Actual")}:</strong> {result.actual}
                     </div>
                     {result.stderr && (
                       <div className="text-accent-error">
-                        <strong>Помилка:</strong> {result.stderr}
+                        <strong>{tr("Помилка", "Error")}:</strong> {result.stderr}
                       </div>
                     )}
                   </div>
@@ -724,7 +1201,7 @@ export const StudentTaskPage: React.FC = () => {
               ))}
             </div>
             <div className="flex justify-end mt-4">
-              <Button onClick={() => setShowResults(false)}>Закрити</Button>
+              <Button onClick={() => setShowResults(false)}>{tr("Закрити", "Close")}</Button>
             </div>
           </div>
         </Modal>

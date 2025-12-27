@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+  <defs>
+    <style>
+      .bg { fill: #0b0f14; }
+      .panel { fill: #0f1620; stroke: #233043; stroke-width: 2; }
+      .title { fill: #d6e1f0; font: 600 34px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .text { fill: #9fb3c8; font: 500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .label { fill: #d6e1f0; font: 600 20px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .chip { fill: #0b1510; stroke: #29ff8a; stroke-width: 2; }
+      .chipText { fill: #29ff8a; font: 700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .arrow { stroke: #3a4f6a; stroke-width: 3; fill: none; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1200" height="675"/>
+
+  <text class="title" x="60" y="78">StudyCod — огляд системи</text>
+  <text class="text" x="60" y="115">Це схема для Docs: допомагає новачкам швидко зрозуміти, що де знаходиться.</text>
+
+  <!-- Left: EDU -->
+  <rect class="panel" x="60" y="150" width="520" height="460" rx="10"/>
+  <text class="label" x="90" y="190">EDU (клас)</text>
+  <rect class="chip" x="90" y="210" width="180" height="44" rx="10"/>
+  <text class="chipText" x="110" y="240">/edu/lessons</text>
+  <text class="text" x="90" y="280">Учень: теми та контрольні</text>
+
+  <rect class="chip" x="90" y="310" width="220" height="44" rx="10"/>
+  <text class="chipText" x="110" y="340">/edu/classes</text>
+  <text class="text" x="90" y="380">Вчитель: класи → теми → завдання</text>
+
+  <rect class="panel" x="90" y="410" width="460" height="170" rx="10"/>
+  <text class="label" x="120" y="445">Ключові сутності</text>
+  <text class="text" x="120" y="478">Тема (TOPIC): практичні завдання</text>
+  <text class="text" x="120" y="508">Контрольна (CONTROL): тест + задачі → 1 оцінка</text>
+  <text class="text" x="120" y="538">Журнал (Gradebook): колонки по темі</text>
+
+  <!-- Right: Personal -->
+  <rect class="panel" x="620" y="150" width="520" height="460" rx="10"/>
+  <text class="label" x="650" y="190">Personal (solo)</text>
+  <rect class="chip" x="650" y="210" width="200" height="44" rx="10"/>
+  <text class="chipText" x="670" y="240">/tasks</text>
+  <text class="text" x="650" y="280">Завдання: виконання + прогрес</text>
+
+  <rect class="chip" x="650" y="310" width="200" height="44" rx="10"/>
+  <text class="chipText" x="670" y="340">/grades</text>
+  <text class="text" x="650" y="380">Оцінки: історія результатів</text>
+
+  <rect class="panel" x="650" y="410" width="460" height="170" rx="10"/>
+  <text class="label" x="680" y="445">Ключові дії</text>
+  <text class="text" x="680" y="478">Відкрив → написав код → відправив</text>
+  <text class="text" x="680" y="508">Переглянув фідбек → покращив</text>
+  <text class="text" x="680" y="538">Слідкуєш за прогресом</text>
+
+  <!-- connector -->
+  <path class="arrow" d="M580 380 C 610 380, 590 380, 620 380"/>
+</svg>
+
+

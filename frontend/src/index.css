@@ -1,48 +1,51 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Design Tokens - Terminal Aesthetic */
+/* =========================
+   Design Tokens – Terminal
+   ========================= */
 :root {
+  color-scheme: dark;
   /* Backgrounds */
   --bg-base: #0a0a0f;
   --bg-surface: #111118;
   --bg-hover: #1a1a24;
   --bg-code: #0f0f15;
-  
+
   /* Text */
   --text-primary: #e8e8f0;
   --text-secondary: #9a9aaf;
   --text-muted: #6a6a7f;
-  
+
   /* Borders */
   --border: #2a2a3a;
-  
-  /* Primary (Neon Green) */
+
+  /* Primary */
   --primary: #00ff88;
   --primary-hover: #00cc6f;
   --primary-muted: #00aa5a;
-  
-  /* Secondary (Neon Blue) */
+
+  /* Secondary */
   --secondary: #5b9fff;
   --secondary-hover: #4a8fff;
-  
+
   /* Accents */
   --accent-error: #ff6b9d;
   --accent-success: #00ff88;
   --accent-warn: #ffd93d;
   --accent-logic-warning: #ffaa44;
-  
+
   /* Motion */
   --motion-fast: 100ms;
   --motion-base: 150ms;
   --motion-slow: 300ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  
+
   /* Typography */
-  --font-mono: "JetBrains Mono", "Fira Code", "Consolas", "Monaco", "Courier New", monospace;
+  --font-mono: "JetBrains Mono", "Fira Code", "Consolas", "Monaco",
+    "Courier New", monospace;
   --font-xs: 11px;
   --font-sm: 13px;
   --font-base: 15px;
@@ -51,12 +54,121 @@
   --font-2xl: 32px;
 }
 
+/* =========================
+   Light Theme (White)
+   ========================= */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Backgrounds */
+  --bg-base: #f6f8fb;
+  --bg-surface: #ffffff;
+  --bg-hover: #eef2f7;
+  --bg-code: #f1f4f9;
+
+  /* Text */
+  --text-primary: #0b1220;
+  --text-secondary: #3a465b;
+  --text-muted: #6b778c;
+
+  /* Borders */
+  --border: #d6deea;
+
+  /* Primary (keep StudyCod green, tuned for light bg) */
+  --primary: #00b35f;
+  --primary-hover: #009a52;
+  --primary-muted: #007a41;
+
+  /* Secondary */
+  --secondary: #2563eb;
+  --secondary-hover: #1d4ed8;
+
+  /* Accents */
+  --accent-error: #e11d48;
+  --accent-success: #16a34a;
+  --accent-warn: #d97706;
+  --accent-logic-warning: #ea580c;
+}
+
+/* =========================
+   Motion helpers
+   ========================= */
+@keyframes shimmer {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.1s var(--ease-out) infinite;
+}
+
+/* =========================
+   Terminal loader effects
+   ========================= */
+@keyframes terminalScan {
+  0% { transform: translateY(-120%); opacity: 0; }
+  10% { opacity: 0.7; }
+  50% { opacity: 0.35; }
+  100% { transform: translateY(120%); opacity: 0; }
+}
+
+@keyframes terminalFlicker {
+  0% { opacity: 1; }
+  4% { opacity: 0.85; }
+  6% { opacity: 1; }
+  9% { opacity: 0.75; }
+  12% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+@keyframes terminalGlow {
+  0% { opacity: 0.45; transform: scale(0.96); }
+  50% { opacity: 0.85; transform: scale(1.02); }
+  100% { opacity: 0.45; transform: scale(0.96); }
+}
+
+.terminal-scanline {
+  background: linear-gradient(180deg, transparent, rgba(0, 255, 136, 0.12), transparent);
+  animation: terminalScan 1.2s linear infinite;
+  mix-blend-mode: screen;
+}
+
+.terminal-flicker {
+  animation: terminalFlicker 2.4s linear infinite;
+  text-shadow: 0 0 12px rgba(0, 255, 136, 0.45);
+}
+
+.terminal-glow {
+  background: radial-gradient(circle, rgba(0,255,136,0.12), transparent 65%);
+  filter: blur(10px);
+  animation: terminalGlow 1.6s var(--ease-out) infinite;
+}
+
+@keyframes dots {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+  100% { content: ""; }
+}
+
+.terminal-dots::after {
+  content: "";
+  display: inline-block;
+  width: 1.2em;
+  text-align: left;
+  animation: dots 1.1s steps(1, end) infinite;
+}
+
+/* =========================
+   Base Layer
+   ========================= */
 @layer base {
   * {
     font-family: var(--font-mono);
   }
-  
-body {
+
+  body {
     background-color: var(--bg-base);
     color: var(--text-primary);
     font-size: var(--font-base);
@@ -64,304 +176,75 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  
-  /* Custom scrollbar - Terminal style */
+
+  /* Scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  
+
   ::-webkit-scrollbar-track {
     background: var(--bg-base);
   }
-  
+
   ::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 4px;
   }
-  
+
   ::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
   }
-  
+
   /* Selection */
   ::selection {
     background: var(--primary);
     color: var(--bg-base);
   }
-  
-  /* KaTeX styles for dark theme */
-  .katex {
+
+  /* =========================
+     KaTeX – Dark Theme
+     ========================= */
+  .katex,
+  .katex-display,
+  .katex .katex-html,
+  .katex .base,
+  .katex .mord,
+  .katex .mrel,
+  .katex .mbin,
+  .katex .mop,
+  .katex .mopen,
+  .katex .mclose,
+  .katex .mpunct,
+  .katex .mfrac,
+  .katex .msqrt,
+  .katex .mroot,
+  .katex .msub,
+  .katex .msup,
+  .katex .munderover,
+  .katex .mtable,
+  .katex .mspace,
+  .katex .mtext,
+  .katex .mstyle,
+  .katex .minner,
+  .katex .mord.mathdefault,
+  .katex .vlist-t,
+  .katex .vlist-s,
+  .katex .sizing,
+  .katex .delimsizing,
+  .katex .nulldelimer,
+  .katex .delim-size1,
+  .katex .delim-size2,
+  .katex .delim-size3,
+  .katex .delim-size4 {
     color: var(--text-primary) !important;
   }
-  
-  .katex-display {
-    color: var(--text-primary) !important;
-  }
-  
+
   .katex .katex-mathml {
     display: none;
   }
-  
-  .katex .katex-html {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .base {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mord {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mrel {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mbin {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mop {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mopen {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mclose {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mpunct {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mfrac {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .msqrt {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mroot {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .msub {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .msup {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .munderover {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mtable {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mspace {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mtext {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mstyle {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .minner {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mord.mathdefault {
-    color: var(--text-primary) !important;
-  }
-  
-  /* Додаткові стилі для всіх елементів KaTeX */
+
   .katex * {
     color: inherit !important;
-  }
-  
-  .katex .vlist-t {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .vlist-s {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .sizing {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delimsizing {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .nulldelimer {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delim-size1 {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delim-size2 {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delim-size3 {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delim-size4 {
-    color: var(--text-primary) !important;
   }
 }
-
-  .katex {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex-display {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .katex-mathml {
-    display: none;
-  }
-  
-  .katex .katex-html {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .base {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mord {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mrel {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mbin {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mop {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mopen {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mclose {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mpunct {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mfrac {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .msqrt {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mroot {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .msub {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .msup {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .munderover {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mtable {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mspace {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mtext {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mstyle {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .minner {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .mord.mathdefault {
-    color: var(--text-primary) !important;
-  }
-  
-  /* Додаткові стилі для всіх елементів KaTeX */
-  .katex * {
-    color: inherit !important;
-  }
-  
-  .katex .vlist-t {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .vlist-s {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .sizing {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delimsizing {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .nulldelimer {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delim-size1 {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delim-size2 {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delim-size3 {
-    color: var(--text-primary) !important;
-  }
-  
-  .katex .delim-size4 {
-    color: var(--text-primary) !important;
-  }

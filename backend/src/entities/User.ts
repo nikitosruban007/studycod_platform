@@ -12,6 +12,7 @@ import { Grade } from "./Grade";
 
 export type UserLang = "JAVA" | "PYTHON";
 export type UserMode = "PERSONAL" | "EDUCATIONAL";
+export type UserRole = "USER" | "TEACHER" | "SYSTEM_ADMIN";
 
 @Entity("users")
 export class User {
@@ -57,6 +58,15 @@ export class User {
   })
   userMode!: UserMode;
 
+  @Column({
+    type: "enum",
+    enum: ["USER", "TEACHER", "SYSTEM_ADMIN"],
+    default: null,
+    nullable: true,
+    name: "role",
+  })
+  role!: UserRole | null;
+
   @Column({ type: "varchar", length: 10, default: "JAVA" })
   lang!: UserLang;
 
@@ -71,7 +81,7 @@ export class User {
   })
   difusPython!: number;
 
-  @Column({ type: "text", nullable: true })
+  @Column({ type: "text", nullable: true, name: "avatar_url" })
   avatarUrl?: string | null;
 
   @Column({
@@ -127,15 +137,18 @@ export class User {
   })
   lastDifusChange?: Date | null;
 
+  @Column({ type: "varchar", length: 100, nullable: true, default: null })
+  timezone?: string | null; // IANA timezone (наприклад: "Europe/Kyiv", "America/New_York")
+
   @OneToMany(() => Task, (t) => t.user)
   tasks!: Task[];
 
   @OneToMany(() => Grade, (g) => g.user)
   grades!: Grade[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: "updated_at" })
   updatedAt!: Date;
 }

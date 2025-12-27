@@ -11,17 +11,31 @@ import { EduTask } from "./entities/EduTask";
 import { TestData } from "./entities/TestData";
 import { EduGrade } from "./entities/EduGrade";
 import { SummaryGrade } from "./entities/SummaryGrade";
+import { LessonAttempt } from "./entities/LessonAttempt";
+import { TopicNew } from "./entities/TopicNew";
+import { TopicTask } from "./entities/TopicTask";
+import { TaskTheory } from "./entities/TaskTheory";
+import { ControlWork } from "./entities/ControlWork";
+import { TopicProgress } from "./entities/TopicProgress";
+import { ClassAnnouncement } from "./entities/ClassAnnouncement";
 
 const dbPort = process.env.DB_PORT != null ? parseInt(process.env.DB_PORT, 10) : 3306;
 
+// Якщо DATABASE_URL встановлений, використовуємо його
+// Інакше використовуємо окремі змінні
 export const AppDataSource = new DataSource({
   type: "mysql",
-  url: process.env.DATABASE_URL,
-  host: process.env.DB_HOST || "localhost",
-  port: dbPort,
-  username: process.env.DB_USER || "root",
-  password: process.env.DB_PASS || "",
-  database: process.env.DB_NAME || "studycod",
+  // DATABASE_URL має пріоритет, але якщо його немає - використовуємо окремі змінні
+  ...(process.env.DATABASE_URL 
+    ? { url: process.env.DATABASE_URL }
+    : {
+        host: process.env.DB_HOST || "localhost",
+        port: dbPort,
+        username: process.env.DB_USER || "root",
+        password: process.env.DB_PASS || "",
+        database: process.env.DB_NAME || "studycod",
+      }
+  ),
   entities: [
     User, 
     Task, 
@@ -34,6 +48,13 @@ export const AppDataSource = new DataSource({
     TestData,
     EduGrade,
     SummaryGrade,
+    LessonAttempt,
+    TopicNew,
+    TopicTask,
+    TaskTheory,
+    ControlWork,
+    TopicProgress,
+    ClassAnnouncement,
   ],
   synchronize: false,
   logging: false,

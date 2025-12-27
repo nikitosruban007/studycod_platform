@@ -1,7 +1,7 @@
-import { callOpenRouter, OpenRouterRequest } from './openRouterClient';
-import { validateTaskGenerationResponse, tryFixJsonResponse } from '../utils/taskValidator';
+import { validateTaskGenerationResponse, tryFixJsonResponse } from '../../../shared/utils/taskValidator';
 import { getTaskExamples, formatExamplesForPrompt } from './taskExamples';
-import { pickOpenRouterKey } from './openRouterKeys';
+import { getLLMOrchestrator } from './llm/LLMOrchestrator';
+import { getLLMProvider } from './llm/provider';
 
 export interface AiTaskGenerationResult {
   title: string;
@@ -48,232 +48,193 @@ export async function generateTaskWithAI(params: {
   userId?: number;
   topicId?: number;
 }): Promise<AiTaskGenerationResult> {
-  const apiKey = pickOpenRouterKey();
-  if (!apiKey) throw new Error('AI_GENERATION_FAILED: No OpenRouter API keys configured');
+  const orchestrator = getLLMOrchestrator();
+  return orchestrator.generateTaskWithAI(params);
+}
 
-  const model = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
-  const difus = params.difus ?? 0;
-  const difficultyPrompt = getDifficultyPrompt(difus);
-  const langName = params.lang === "JAVA" ? "Java" : "Python";
+// Генерація умови завдання через AI
+export async function generateTaskCondition(params: {
+  topicTitle: string;
+  taskType: "PRACTICE" | "CONTROL";
+  difficulty?: number;
+  language: "JAVA" | "PYTHON";
+  userId?: number;
+  topicId?: number;
+}): Promise<{ description: string }> {
+  const orchestrator = getLLMOrchestrator();
+  return orchestrator.generateTaskCondition(params);
+}
 
-  let taskTypeDescription = "";
-  if (params.isControl) {
-    taskTypeDescription = `КОНТРОЛЬНА РОБОТА. Студент пройшов теми: ${params.prevTopics || params.topicTitle}. Створи комплексне практичне завдання, що охоплює пройдений матеріал.`;
-  } else if (params.isFirstTask) {
-    taskTypeDescription = `ВСТУПНЕ завдання для теми "${params.topicTitle}". Завдання має поєднувати теорію та практику.`;
-  } else if (params.numInTopic === 2) {
-    taskTypeDescription = `ДРУГЕ практичне завдання для відпрацювання теми "${params.topicTitle}".`;
-  } else {
-    taskTypeDescription = `ТРЕТЄ фінальне практичне завдання по темі "${params.topicTitle}" для закріплення матеріалу.`;
-  }
+async function generateTaskCondition_OLD(params: {
+  topicTitle: string;
+  taskType: "PRACTICE" | "CONTROL";
+  difficulty?: number;
+  language: "JAVA" | "PYTHON";
+  userId?: number;
+  topicId?: number;
+}): Promise<{ description: string }> {
+  const provider = getLLMProvider();
+  const langName = params.language === "JAVA" ? "Java" : "Python";
+  const difficulty = params.difficulty ?? 3;
+  const difficultyPrompt = getDifficultyPrompt(difficulty / 5);
 
-  const jsonSchema = {
-    type: "object",
-    properties: {
-      title: { type: "string" },
-      topic: { type: "string" },
-      difficulty: { type: "number", minimum: 1, maximum: 5 },
-      theoryMarkdown: { type: "string" },
-      practicalTask: { type: "string" },
-      inputFormat: { type: "string" },
-      outputFormat: { type: "string" },
-      constraints: { type: "string" },
-      examples: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            input: { type: "string" },
-            output: { type: "string" },
-            explanation: { type: "string" }
-          },
-          required: ["input", "output", "explanation"]
-        },
-        minItems: 1
-      },
-      codeTemplate: { type: "string" }
-    },
-    required: ["title", "topic", "difficulty", "theoryMarkdown", "practicalTask", "inputFormat", "outputFormat", "constraints", "examples", "codeTemplate"]
-  };
+  const taskTypeText = params.taskType === "CONTROL" 
+    ? "КОНТРОЛЬНЕ завдання для перевірки знань по темі"
+    : "ПРАКТИЧНЕ завдання для відпрацювання матеріалу";
 
-  const systemPrompt = `Ти досвідчений викладач програмування. Створюй якісні практичні завдання для студентів.
+  const systemPrompt = `Ти досвідчений викладач програмування. Створюй чіткі, лаконічні умови завдань без зайвої "води".`;
 
-ВИМОГИ:
-1. Завдання має бути РОЗРАХОВАНЕ НА КОНСОЛЬНУ ПРОГРАМУ
-2. Має бути ПЕРЕВІРЮВАНИМ: чіткий INPUT/OUTPUT, обмеження, приклади
-3. Теорія має бути ДЕТАЛЬНОЮ з прикладами коду
-4. Практичне завдання має бути КОНКРЕТНИМ
-5. Код-шаблон має бути ВАЛІДНИМ ${langName} кодом
-
-ВІДПОВІДАЙ ТІЛЬКИ ВАЛІДНИМ JSON БЕЗ БУДЬ-ЯКИХ ПОЯСНЕНЬ.`;
-
-  const examples = await getTaskExamples({
-    topicTitle: params.topicTitle,
-    lang: params.lang,
-    difus,
-    numExamples: 2,
-  });
-
-  const examplesText = formatExamplesForPrompt(examples);
-
-  const userPrompt = `
-${taskTypeDescription}
+  const userPrompt = `Створи умову ${taskTypeText} "${params.topicTitle}" для мови ${langName}.
 
 ${difficultyPrompt}
 
-Мова програмування: ${langName}
+ВИМОГИ:
+- Умова має бути чіткою та конкретною
+- Без зайвих пояснень та "води"
+- Прив'язана до теми "${params.topicTitle}"
+- Формат: Markdown
 
-Теорія з теми (для контексту):
-${params.theory.slice(0, 3000)}
-${examplesText}
+Поверни ТІЛЬКИ умову завдання без додаткових коментарів.`;
 
-Створи повне завдання (теорія + практика) у форматі JSON згідно з цією схемою:
-${JSON.stringify(jsonSchema, null, 2)}
+  try {
+    const content = await provider.generateText(userPrompt, systemPrompt, {
+      timeout: 30000,
+      userId: params.userId,
+      topicId: params.topicId,
+      temperature: 0.7,
+      maxTokens: 1500,
+    });
+    return { description: content.trim() };
+  } catch (error: any) {
+    throw new Error(`AI_GENERATION_FAILED: ${error.message || 'Unknown error'}`);
+  }
+}
 
-ВАЖЛИВО:
-- Для Java: codeTemplate має містити ТІЛЬКИ порожній клас Main з методом main.
-- Для Python: codeTemplate має містити ТІЛЬКИ порожню функцію main() з if __name__ == "__main__"
-- Відповідай ТІЛЬКИ JSON, без markdown блоків, без пояснень.
-`.trim();
+// Генерація шаблону коду (пустишка)
+export async function generateTaskTemplate(params: {
+  topicTitle: string;
+  language: "JAVA" | "PYTHON";
+  description?: string;
+  userId?: number;
+  topicId?: number;
+}): Promise<{ template: string }> {
+  const orchestrator = getLLMOrchestrator();
+  return orchestrator.generateTaskTemplate(params);
+}
 
-  const supportsJsonMode = !model.includes('gemma') && !model.includes('google/') && !model.includes('free');
+async function generateTaskTemplate_OLD(params: {
+  topicTitle: string;
+  language: "JAVA" | "PYTHON";
+  description?: string;
+  userId?: number;
+  topicId?: number;
+}): Promise<{ template: string }> {
+  const provider = getLLMProvider();
+  const langName = params.language === "JAVA" ? "Java" : "Python";
 
-  const baseRequest: OpenRouterRequest = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    ...(supportsJsonMode ? { response_format: { type: 'json_object' } } : {}),
-    temperature: 0.8,
-    max_tokens: 6000,
-  };
+  const systemPrompt = `Ти досвідчений викладач програмування. Створюй шаблони коду з TODO-коментарями для студентів.`;
 
-  let lastContent: string | null = null;
-  let lastError: Error | null = null;
-  const maxRetries = 2;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await callOpenRouter(baseRequest, {
-        timeout: 30000,
-        maxRetries: 0,
-        userId: params.userId,
-        topicId: params.topicId,
-      });
-
-      const content = response.choices?.[0]?.message?.content;
-      if (!content) throw new Error('Empty AI response');
-      lastContent = content;
-
-      let parsed: any = null;
-      try {
-        parsed = JSON.parse(content.trim());
-      } catch {
-        parsed = tryFixJsonResponse(content);
-      }
-
-      const validated = validateTaskGenerationResponse(parsed);
-
-      return {
-        title: validated.title,
-        topic: validated.topic,
-        difficulty: validated.difficulty,
-        theoryMarkdown: validated.theoryMarkdown,
-        practicalTask: validated.practicalTask,
-        inputFormat: validated.inputFormat,
-        outputFormat: validated.outputFormat,
-        constraints: validated.constraints,
-        examples: validated.examples,
-        codeTemplate: validated.codeTemplate,
-      };
-    } catch (err: any) {
-      lastError = err;
-      if (attempt < maxRetries && (err.message?.includes('not enabled') || err.message?.includes('INVALID_ARGUMENT')) && (baseRequest as any).response_format) {
-        const { response_format, ...withoutJson } = baseRequest as any;
-        Object.assign(baseRequest, withoutJson);
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
-
-      if (attempt < maxRetries && (err.message?.toLowerCase().includes('parse') || err.message?.toLowerCase().includes('json') || err.message?.toLowerCase().includes('validation'))) {
-        const repairPrompt = `Помилка форматування JSON. Виправ наступну відповідь, щоб вона була валідним JSON об'єктом без markdown блоків.
-
-Помилка: ${err.message}
-Попередня відповідь:
-${lastContent?.substring(0, 2000) || 'N/A'}
-
-Поверни ТІЛЬКИ виправлений JSON об'єкт, який точно відповідає схемі.`;
-
-        const repairRequest: OpenRouterRequest = {
-          ...baseRequest,
-          messages: [
-            { role: 'system', content: 'Виправ невалідний JSON. Поверни ТІЛЬКИ виправлений JSON без пояснень.' },
-            { role: 'user', content: repairPrompt },
-          ],
-          temperature: 0.0,
-        };
-
-        try {
-          const repairResponse = await callOpenRouter(repairRequest, {
-            timeout: 30000,
-            maxRetries: 0,
-            userId: params.userId,
-            topicId: params.topicId,
-          });
-          const repairContent = repairResponse.choices?.[0]?.message?.content;
-          if (repairContent) {
-            lastContent = repairContent;
-            let parsedRepair: any = null;
-            try {
-              parsedRepair = JSON.parse(repairContent.trim());
-            } catch {
-              parsedRepair = tryFixJsonResponse(repairContent);
-            }
-            const validated = validateTaskGenerationResponse(parsedRepair);
-            return {
-              title: validated.title,
-              topic: validated.topic,
-              difficulty: validated.difficulty,
-              theoryMarkdown: validated.theoryMarkdown,
-              practicalTask: validated.practicalTask,
-              inputFormat: validated.inputFormat,
-              outputFormat: validated.outputFormat,
-              constraints: validated.constraints,
-              examples: validated.examples,
-              codeTemplate: validated.codeTemplate,
-            };
-          } else {
-            await new Promise(r => setTimeout(r, 1000));
-            continue;
-          }
-        } catch {
-          await new Promise(r => setTimeout(r, 1000));
-          continue;
-        }
-      }
-
-      if (attempt >= maxRetries) {
-        throw new Error(`AI_GENERATION_FAILED: ${err.message || 'Unknown error'}`);
-      }
-    }
+  let userPrompt = `Створи шаблон коду (пустишку) для мови ${langName} по темі "${params.topicTitle}".`;
+  
+  if (params.description) {
+    userPrompt += `\n\nУмова завдання:\n${params.description}`;
   }
 
-  throw new Error(`AI_GENERATION_FAILED: All retries exhausted. Last error: ${lastError?.message || 'Unknown error'}`);
+  userPrompt += `\n\nВИМОГИ:
+- Шаблон має містити TODO-коментарі з інструкціями
+- Необхідні імпорти/imports
+- Порожню функцію або main метод
+- БЕЗ реалізації логіки
+- Формат коду має відповідати стандартам ${langName}
+
+Приклад для Java:
+\`\`\`java
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) {
+        // TODO: реалізуйте рішення задачі
+    }
+}
+\`\`\`
+
+Поверни ТІЛЬКИ код без markdown блоків та пояснень.`;
+
+  try {
+    const content = await provider.generateText(userPrompt, systemPrompt, {
+      timeout: 30000,
+      userId: params.userId,
+      topicId: params.topicId,
+      temperature: 0.3,
+      maxTokens: 1000,
+    });
+    
+    let template = content.trim();
+    template = template.replace(/^```\w*\n?/gm, '');
+    template = template.replace(/```$/gm, '');
+    template = template.trim();
+    
+    return { template };
+  } catch (error: any) {
+    throw new Error(`AI_GENERATION_FAILED: ${error.message || 'Unknown error'}`);
+  }
 }
 
 export async function generateTheoryWithAI(params: {
   topicTitle: string;
   lang: "JAVA" | "PYTHON";
+  taskDescription?: string;
+  taskType?: "PRACTICE" | "CONTROL";
+  difficulty?: number;
   userId?: number;
   topicId?: number;
 }): Promise<AiTheoryResult> {
-  const model = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
+  const orchestrator = getLLMOrchestrator();
+  return orchestrator.generateTheoryWithAI(params);
+}
+
+async function generateTheoryWithAI_OLD(params: {
+  topicTitle: string;
+  lang: "JAVA" | "PYTHON";
+  taskDescription?: string;
+  taskType?: "PRACTICE" | "CONTROL";
+  difficulty?: number;
+  userId?: number;
+  topicId?: number;
+}): Promise<AiTheoryResult> {
+  const provider = getLLMProvider();
   const langName = params.lang === "JAVA" ? "Java" : "Python";
 
   const systemPrompt = `Ти досвідчений викладач програмування. Створюй якісні уроки з детальними поясненнями та прикладами коду. Відповідай українською мовою у форматі Markdown.`;
 
-  const userPrompt = `Напиши детальний урок по темі: "${params.topicTitle}" для мови ${langName}.
+  let userPrompt: string;
+  
+  if (params.taskDescription && params.taskType) {
+    const difficultyDesc = params.difficulty 
+      ? params.difficulty === 1 ? "легкого рівня" 
+        : params.difficulty === 2 ? "простого рівня"
+        : params.difficulty === 3 ? "середнього рівня"
+        : params.difficulty === 4 ? "складного рівня"
+        : "дуже складного рівня"
+      : "середнього рівня";
+    
+    const taskTypeDesc = params.taskType === "CONTROL" ? "контрольного завдання" : "практичного завдання";
+    
+    userPrompt = `Напиши детальну теорію для ${taskTypeDesc} ${difficultyDesc} по темі "${params.topicTitle}" для мови ${langName}.
+
+Умова завдання:
+${params.taskDescription}
+
+Теорія має містити:
+1. Вступ до теми та необхідних концепцій для виконання завдання
+2. Детальні пояснення ключових моментів з прикладами коду
+3. Пояснення підходів до розв'язання подібних задач
+4. Важливі моменти та типові помилки
+5. Практичні приклади, що допоможуть зрозуміти завдання
+
+Формат: Markdown з код-блоками для прикладів. Теорія має бути конкретною та допомагати учню виконати саме це завдання.`;
+  } else {
+    userPrompt = `Напиши детальний урок по темі: "${params.topicTitle}" для мови ${langName}.
 Урок має містити:
 1. Вступ до теми
 2. Детальні пояснення з прикладами коду
@@ -281,24 +242,16 @@ export async function generateTheoryWithAI(params: {
 4. Важливі моменти та застереження
 
 Формат: Markdown з код-блоками для прикладів.`;
-
-  const request: OpenRouterRequest = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.7,
-    max_tokens: 3000,
-  };
+  }
 
   try {
-    const response = await callOpenRouter(request, {
+    const content = await provider.generateText(userPrompt, systemPrompt, {
       timeout: 30000,
       userId: params.userId,
       topicId: params.topicId,
+      temperature: 0.7,
+      maxTokens: 3000,
     });
-    const content = response.choices?.[0]?.message?.content;
     if (!content || !content.trim()) throw new Error('Empty AI response');
     return { theory: content.trim() };
   } catch (err: any) {
@@ -313,49 +266,135 @@ export async function generateQuizWithAI(params: {
   userId?: number;
   topicId?: number;
 }): Promise<AiQuizResult> {
-  const model = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
+  const orchestrator = getLLMOrchestrator();
+  return orchestrator.generateQuizWithAI(params);
+}
+
+async function generateQuizWithAI_OLD(params: {
+  lang: "JAVA" | "PYTHON";
+  prevTopics: string;
+  count?: number;
+  userId?: number;
+  topicId?: number;
+}): Promise<AiQuizResult> {
+  const provider = getLLMProvider();
   const langName = params.lang === "JAVA" ? "Java" : "Python";
   const questionCount = params.count || 12;
 
-  const systemPrompt = `Ти екзаменатор з програмування. Створюй тестові питання з правильними відповідями. Відповідай ТІЛЬКИ у форматі JSON без додаткових пояснень.`;
+  const systemPrompt = `Ти екзаменатор з програмування. Створюй тестові питання з правильними відповідями. Відповідай ТІЛЬКИ у форматі JSON масиву без додаткових пояснень, коментарів або тексту до або після JSON.`;
 
-  const userPrompt = `Створи тест виключно по мові ${langName}. Теми для питань: ${params.prevTopics}.
+  let userPrompt = `Створи тест виключно по мові ${langName}. Теми для питань: ${params.prevTopics}.
 ВИМОГИ:
 - Кількість питань: РІВНО ${questionCount}
 - Кожне питання має рівно 5 варіантів відповіді (А, Б, В, Г, Д)
-- Формат: ТІЛЬКИ ВАЛІДНИЙ JSON масив`;
-
-  const supportsJsonMode = !model.includes('gemma') && !model.includes('google/') && !model.includes('free');
-
-  const request: OpenRouterRequest = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    ...(supportsJsonMode ? { response_format: { type: 'json_object' } } : {}),
-    temperature: 0.7,
-    max_tokens: 2000,
-  };
+- Формат: ТІЛЬКИ ВАЛІДНИЙ JSON масив без жодного додаткового тексту
+- Кожне питання має формат: {"q": "питання", "options": ["А", "Б", "В", "Г", "Д"], "correct": 0}
+- Відповідай ТІЛЬКИ JSON масивом, без пояснень, без markdown, без code blocks`;
 
   let lastError: Error | null = null;
   const maxRetries = 2;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await callOpenRouter(request, {
+      const content = await provider.generateText(userPrompt, systemPrompt, {
         timeout: 30000,
         userId: params.userId,
         topicId: params.topicId,
+        temperature: 0.7,
+        maxTokens: 3000,
       });
-      const content = response.choices?.[0]?.message?.content;
+      
       if (!content) throw new Error('Empty AI response');
 
       let parsed: any;
       try {
         parsed = JSON.parse(content.trim());
-      } catch {
-        parsed = tryFixJsonResponse(content);
+      } catch (firstError) {
+        try {
+          let cleaned = content.trim();
+          const codeBlockStart = cleaned.indexOf('```');
+          if (codeBlockStart !== -1) {
+            const codeBlockEnd = cleaned.lastIndexOf('```');
+            if (codeBlockEnd !== -1 && codeBlockEnd > codeBlockStart) {
+              cleaned = cleaned.substring(codeBlockStart + 3, codeBlockEnd);
+              cleaned = cleaned.replace(/^(?:json|JSON)\s*/i, '');
+              cleaned = cleaned.trim();
+            }
+          }
+          
+          const jsonStart = cleaned.indexOf('[');
+          const objStart = cleaned.indexOf('{');
+          let startPos = -1;
+          let isArray = false;
+          
+          if (jsonStart !== -1 && (objStart === -1 || jsonStart < objStart)) {
+            startPos = jsonStart;
+            isArray = true;
+          } else if (objStart !== -1) {
+            startPos = objStart;
+            isArray = false;
+          }
+          
+          if (startPos !== -1) {
+            let depth = 0;
+            let inString = false;
+            let escapeNext = false;
+            let endPos = startPos;
+            
+            for (let i = startPos; i < cleaned.length; i++) {
+              const char = cleaned[i];
+              
+              if (escapeNext) {
+                escapeNext = false;
+                continue;
+              }
+              
+              if (char === '\\') {
+                escapeNext = true;
+                continue;
+              }
+              
+              if (char === '"' && !escapeNext) {
+                inString = !inString;
+                continue;
+              }
+              
+              if (!inString) {
+                if ((isArray && char === '[') || (!isArray && char === '{')) {
+                  depth++;
+                } else if ((isArray && char === ']') || (!isArray && char === '}')) {
+                  depth--;
+                  if (depth === 0) {
+                    endPos = i + 1;
+                    break;
+                  }
+                }
+              }
+            }
+            
+            if (endPos > startPos) {
+              let fixed = cleaned.substring(startPos, endPos).replace(/,(\s*[}\]])/g, '$1').trim();
+              if (isArray) {
+                const lastBracket = fixed.lastIndexOf(']');
+                if (lastBracket !== -1) {
+                  fixed = fixed.substring(0, lastBracket + 1);
+                }
+              } else {
+                const lastBrace = fixed.lastIndexOf('}');
+                if (lastBrace !== -1) {
+                  fixed = fixed.substring(0, lastBrace + 1);
+                }
+              }
+              parsed = JSON.parse(fixed);
+            } else {
+              throw new Error('Could not find end of JSON');
+            }
+          } else {
+            parsed = tryFixJsonResponse(content);
+          }
+        } catch (secondError) {
+          parsed = tryFixJsonResponse(content);
+        }
       }
 
       if (typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -377,14 +416,8 @@ export async function generateQuizWithAI(params: {
       return { quizJson: JSON.stringify(parsed) };
     } catch (err: any) {
       lastError = err;
-      if (attempt < maxRetries && (err.message?.includes('not enabled') || err.message?.includes('INVALID_ARGUMENT')) && (request as any).response_format) {
-        const { response_format, ...rest } = request as any;
-        Object.assign(request, rest);
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
       if (attempt < maxRetries) {
-        request.messages.push({ role: 'user', content: `Виправ формат. Поверни ТІЛЬКИ JSON масив з ${questionCount} питаннями, кожне з 5 варіантами відповіді.` });
+        userPrompt += `\n\nВиправ формат. Поверни ТІЛЬКИ JSON масив з ${questionCount} питаннями, кожне з 5 варіантами відповіді. БЕЗ жодного тексту до або після JSON. БЕЗ markdown. БЕЗ пояснень. ТІЛЬКИ чистий JSON масив.`;
         await new Promise(r => setTimeout(r, 1000));
         continue;
       }

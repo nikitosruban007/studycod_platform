@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "../components/ui/Button";
 import type { CourseLanguage } from "../types";
+import { tr } from "../i18n";
+import { api } from "../lib/api/client";
 
 interface Props {
   onAuth: (user: any) => void;
 }
 
 export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
+  useTranslation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get("token");
@@ -26,7 +30,7 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
 
   useEffect(() => {
     if (!token) {
-      setError("Токен відсутній. Будь ласка, спробуйте знову.");
+      setError(tr("Токен відсутній. Будь ласка, спробуйте знову.", "Token is missing. Please try again."));
       return;
     }
 
@@ -61,48 +65,43 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
     setError(null);
 
     if (!username.trim()) {
-      setError("Логін обов'язковий");
+      setError(tr("Логін обов'язковий", "Username is required"));
       return;
     }
 
     if (!password) {
-      setError("Пароль обов'язковий");
+      setError(tr("Пароль обов'язковий", "Password is required"));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Паролі не співпадають");
+      setError(tr("Паролі не співпадають", "Passwords do not match"));
       return;
     }
 
     if (password.length < 6) {
-      setError("Пароль має бути мінімум 6 символів");
+      setError(tr("Пароль має бути мінімум 6 символів", "Password must be at least 6 characters"));
       return;
     }
 
     if (!firstName.trim() || !lastName.trim()) {
-      setError("Ім'я та прізвище обов'язкові");
+      setError(tr("Ім'я та прізвище обов'язкові", "First name and last name are required"));
       return;
     }
 
     if (!birthDay || !birthMonth) {
-      setError("День та місяць народження обов'язкові");
+      setError(tr("День та місяць народження обов'язкові", "Birth day and month are required"));
       return;
     }
 
     if (birthDay < 1 || birthDay > 31 || birthMonth < 1 || birthMonth > 12) {
-      setError("Невірна дата народження");
+      setError(tr("Невірна дата народження", "Invalid date of birth"));
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:4000"}/auth/google/complete`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const res = await api.post("/auth/google/complete", {
           token,
           username: username.trim(),
           password,
@@ -111,15 +110,8 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
           lastName: lastName.trim(),
           birthDay: Number(birthDay),
           birthMonth: Number(birthMonth),
-        }),
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.message || "Помилка завершення реєстрації");
-        return;
-      }
+      const data = res.data;
 
       // Зберігаємо токен та перенаправляємо
       if (data.token) {
@@ -127,7 +119,11 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
         onAuth(data.user);
       }
     } catch (err: any) {
-      setError(err?.message || "Помилка завершення реєстрації");
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.message ||
+        tr("Помилка завершення реєстрації", "Failed to complete registration");
+      setError(apiMessage);
     } finally {
       setLoading(false);
     }
@@ -138,10 +134,10 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
       <div className="min-h-screen flex items-center justify-center bg-bg-base">
         <div className="w-full max-w-md bg-bg-surface border border-border p-8">
           <div className="text-xs font-mono text-accent-error border border-accent-error bg-bg-code px-3 py-2">
-            Токен відсутній. Будь ласка, спробуйте знову.
+            {tr("Токен відсутній. Будь ласка, спробуйте знову.", "Token is missing. Please try again.")}
           </div>
           <Button onClick={() => navigate("/")} className="w-full mt-4">
-            Повернутись на головну
+            {tr("Повернутись на головну", "Back to home")}
           </Button>
         </div>
       </div>
@@ -156,16 +152,19 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
             &lt;/&gt;
           </div>
           <h1 className="mt-4 text-xl font-mono text-text-primary">
-            Завершення реєстрації
+            {tr("Завершення реєстрації", "Complete registration")}
           </h1>
           <p className="mt-2 text-xs font-mono text-text-secondary text-center">
-            Заповніть додаткову інформацію для завершення реєстрації через Google
+            {tr(
+              "Заповніть додаткову інформацію для завершення реєстрації через Google",
+              "Fill in the additional information to finish registration via Google"
+            )}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-mono text-text-secondary mb-1 block">Логін</label>
+            <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("Логін", "Username")}</label>
             <input
               type="text"
               className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -175,13 +174,13 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
             />
             {googleData?.email && (
               <p className="mt-1 text-xs font-mono text-text-secondary">
-                Запропоновано з email: {googleData.email.split("@")[0]}
+                {tr("Запропоновано з email:", "Suggested from email:")} {googleData.email.split("@")[0]}
               </p>
             )}
           </div>
 
           <div>
-            <label className="text-xs font-mono text-text-secondary mb-1 block">Пароль</label>
+            <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("Пароль", "Password")}</label>
             <input
               type="password"
               className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -193,7 +192,9 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
           </div>
 
           <div>
-            <label className="text-xs font-mono text-text-secondary mb-1 block">Підтвердити пароль</label>
+            <label className="text-xs font-mono text-text-secondary mb-1 block">
+              {tr("Підтвердити пароль", "Confirm password")}
+            </label>
             <input
               type="password"
               className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -206,7 +207,7 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-xs font-mono text-text-secondary mb-1 block">Ім'я</label>
+              <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("Ім'я", "First name")}</label>
               <input
                 type="text"
                 className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -216,7 +217,7 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
               />
             </div>
             <div>
-              <label className="text-xs font-mono text-text-secondary mb-1 block">Прізвище</label>
+              <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("Прізвище", "Last name")}</label>
               <input
                 type="text"
                 className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -228,10 +229,12 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
           </div>
 
           <div>
-            <label className="text-xs font-mono text-text-secondary mb-1 block">День народження (без року)</label>
+            <label className="text-xs font-mono text-text-secondary mb-1 block">
+              {tr("День народження (без року)", "Birthday (day and month)")}
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs font-mono text-text-secondary mb-1 block">День</label>
+                <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("День", "Day")}</label>
                 <input
                   type="number"
                   min="1"
@@ -244,7 +247,7 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
                 />
               </div>
               <div>
-                <label className="text-xs font-mono text-text-secondary mb-1 block">Місяць</label>
+                <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("Місяць", "Month")}</label>
                 <input
                   type="number"
                   min="1"
@@ -260,7 +263,7 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
           </div>
 
           <div>
-            <label className="text-xs font-mono text-text-secondary mb-2 block">Мова курсу</label>
+            <label className="text-xs font-mono text-text-secondary mb-2 block">{tr("Мова курсу", "Course language")}</label>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -294,16 +297,7 @@ export const GoogleAuthCompletePage: React.FC<Props> = ({ onAuth }) => {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Обробка..." : "Завершити реєстрацію"}
-          </Button>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Обробка..." : "Завершити реєстрацію"}
+            {loading ? tr("Обробка...", "Processing...") : tr("Завершити реєстрацію", "Complete registration")}
           </Button>
         </form>
       </div>

@@ -12,6 +12,7 @@ import {
 import { User } from "./User";
 import { Grade } from "./Grade";
 import { Topic } from "./Topic";
+import { TestData } from "./TestData";
 
 export type TaskType = "INTRO" | "TOPIC" | "CONTROL";
 export type TaskStatus = "OPEN" | "SUBMITTED" | "GRADED";
@@ -58,11 +59,11 @@ export class Task {
   template!: string;
 
   // Чернетка (оновлюється при "Зберегти")
-  @Column({ type: "text", default: "" })
+  @Column({ type: "text", default: "", name: "draft_code" })
   draftCode!: string;
 
   // Остаточний код, який відправили на оцінку
-  @Column({ type: "text", default: "" })
+  @Column({ type: "text", default: "", name: "final_code" })
   finalCode!: string;
 
   // Проста відмітка виконаності (0 / 1)
@@ -85,12 +86,16 @@ export class Task {
   @Column({ type: "int", default: 0, name: "topic_index" })
   topicIndex!: number;
 
-  // JSON тест для контрольної роботи (12 питань у форматі АБВГД)
-  @Column({ type: "text", nullable: true, name: "quiz_json" })
-  quizJson?: string | null;
+  // ❌ ВИДАЛЕНО: quizJson - не використовується в PERSONAL домені
+  // JSON тест для контрольної роботи використовується тільки в EDU домені
+  // (EduLesson.quizJson, ControlWork.quizJson)
+  // Якщо потрібен quiz для PERSONAL domain, використовуйте окрему структуру
 
   @OneToMany(() => Grade, (g) => g.task)
   grades!: Grade[];
+
+  @OneToMany(() => TestData, (td) => td.personalTask)
+  testData!: TestData[];
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;

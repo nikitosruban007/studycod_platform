@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="880" viewBox="0 0 1400 880">
+  <defs>
+    <style>
+      .bg { fill:#0b0f14; }
+      .panel { fill:#0f1620; stroke:#233043; stroke-width:2; }
+      .muted { fill:#9fb3c8; font:500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .title { fill:#d6e1f0; font:800 30px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .mono { fill:#d6e1f0; font:700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .card { fill:#0b0f14; stroke:#233043; stroke-width:2; }
+      .ok { fill:#0b1510; stroke:#00ff88; stroke-width:2; }
+      .bad { fill:#170b10; stroke:#ff6b9d; stroke-width:2; }
+      .chipTextOk { fill:#00ff88; font:800 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .chipTextBad { fill:#ff6b9d; font:800 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .code { fill:#0f0f15; stroke:#233043; stroke-width:2; }
+      .codeText { fill:#d6e1f0; font:500 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="880"/>
+  <rect class="panel" x="40" y="30" width="1320" height="84" rx="14"/>
+  <text class="mono" x="78" y="82">Перевірка практичного завдання</text>
+  <text class="muted" x="980" y="82">Вчитель · /edu/tasks/:id</text>
+
+  <rect class="panel" x="40" y="140" width="1320" height="710" rx="14"/>
+  <text class="title" x="78" y="196">Задача: Кількість елементів &gt; середнього</text>
+  <text class="muted" x="78" y="230">Результати тестів + ручна оцінка (0..12) + коментар.</text>
+
+  <!-- code -->
+  <rect class="code" x="78" y="270" width="840" height="280" rx="14"/>
+  <text class="codeText" x="110" y="310">public static int solve(int[] a) {</text>
+  <text class="codeText" x="110" y="336">  double avg = Arrays.stream(a).average().orElse(0);</text>
+  <text class="codeText" x="110" y="362">  int cnt = 0;</text>
+  <text class="codeText" x="110" y="388">  for (int x : a) if (x &gt; avg) cnt++;</text>
+  <text class="codeText" x="110" y="414">  return cnt;</text>
+  <text class="codeText" x="110" y="440">}</text>
+
+  <!-- summary -->
+  <rect class="card" x="940" y="270" width="382" height="280" rx="14"/>
+  <text class="mono" x="972" y="312">Результат</text>
+  <rect class="ok" x="972" y="332" width="150" height="36" rx="10"/>
+  <text class="chipTextOk" x="996" y="356">Тести: 8/10</text>
+  <rect class="bad" x="1132" y="332" width="170" height="36" rx="10"/>
+  <text class="chipTextBad" x="1154" y="356">Manual review</text>
+  <text class="muted" x="972" y="410">Оцінка:</text>
+  <text class="title" x="972" y="452">9 / 12</text>
+  <text class="muted" x="972" y="492">Коментар:</text>
+  <text class="muted" x="972" y="520">“Добре, але оптимізуй цикл”</text>
+
+  <!-- tests -->
+  <rect class="card" x="78" y="580" width="1244" height="240" rx="14"/>
+  <text class="mono" x="110" y="622">Тест-результати</text>
+  <rect class="ok" x="110" y="650" width="1180" height="44" rx="12"/>
+  <text class="chipTextOk" x="130" y="678">✓ Test #1 passed</text>
+  <rect class="ok" x="110" y="706" width="1180" height="44" rx="12"/>
+  <text class="chipTextOk" x="130" y="734">✓ Test #2 passed</text>
+  <rect class="bad" x="110" y="762" width="1180" height="44" rx="12"/>
+  <text class="chipTextBad" x="130" y="790">✗ Test #3 failed (expected 3, got 2)</text>
+</svg>
+
+

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="880" viewBox="0 0 1400 880">
+  <defs>
+    <style>
+      .bg { fill:#0b0f14; }
+      .panel { fill:#0f1620; stroke:#233043; stroke-width:2; }
+      .muted { fill:#9fb3c8; font:500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .title { fill:#d6e1f0; font:800 30px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .mono { fill:#d6e1f0; font:700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .card { fill:#0b0f14; stroke:#233043; stroke-width:2; }
+      .chip { fill:#0b1510; stroke:#00ff88; stroke-width:2; }
+      .chipWarn { fill:#17120b; stroke:#ffd93d; stroke-width:2; }
+      .chipText { fill:#00ff88; font:800 16px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .chipTextWarn { fill:#ffd93d; font:800 16px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .btn { fill:url(#g); stroke:#00ff88; stroke-width:2; }
+      .btnText { fill:#0b0f14; font:900 16px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .danger { fill:#ff6b9d; font:800 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+    </style>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00ff88"/>
+      <stop offset="1" stop-color="#00cc6f"/>
+    </linearGradient>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="880"/>
+
+  <!-- header -->
+  <rect class="panel" x="40" y="30" width="1320" height="84" rx="14"/>
+  <text class="mono" x="78" y="82">StudyCod EDU</text>
+  <text class="muted" x="980" y="82">Вчитель · Тема · /edu/topics/:id</text>
+  <rect class="chip" x="250" y="53" width="160" height="40" rx="10"/>
+  <text class="chipText" x="272" y="79">Назад</text>
+
+  <rect class="panel" x="40" y="140" width="1320" height="710" rx="14"/>
+  <text class="title" x="78" y="196">Тема: Масиви</text>
+  <text class="muted" x="78" y="230">Керуйте практичними завданнями та контрольними роботами цієї теми.</text>
+
+  <!-- practice section -->
+  <text class="mono" x="78" y="282">Практичні завдання</text>
+  <rect class="card" x="78" y="305" width="1244" height="170" rx="14"/>
+  <rect x="78" y="305" width="6" height="170" fill="#5b9fff"/>
+  <text class="mono" x="110" y="350">Задача 1: Сума елементів</text>
+  <text class="muted" x="110" y="382">Дедлайн: 27.12.2025 · Спроб: 3 · Assigned: true</text>
+  <rect class="chip" x="110" y="406" width="160" height="44" rx="12"/>
+  <text class="chipText" x="132" y="434">Відкликати</text>
+  <rect class="chipWarn" x="290" y="406" width="160" height="44" rx="12"/>
+  <text class="chipTextWarn" x="316" y="434">Налаштування</text>
+  <text class="danger" x="1080" y="434">🗑</text>
+
+  <!-- control works -->
+  <text class="mono" x="78" y="526">Контрольні роботи</text>
+  <rect class="card" x="78" y="550" width="1244" height="220" rx="14"/>
+  <rect x="78" y="550" width="6" height="220" fill="#ffd93d"/>
+  <text class="mono" x="110" y="596">Самостійна робота №1</text>
+  <text class="muted" x="110" y="628">Тест: увімкнено · Практика: увімкнено · Формула: test*0.5 + avgPractice*0.5</text>
+  <text class="muted" x="110" y="658">Дедлайн: 27.12.2025 · Assigned: true · Таймер: 45 хв</text>
+  <rect class="chip" x="110" y="682" width="160" height="44" rx="12"/>
+  <text class="chipText" x="132" y="710">Відкликати</text>
+  <rect class="btn" x="290" y="682" width="220" height="44" rx="12"/>
+  <text class="btnText" x="318" y="710">Відкрити →</text>
+  <rect class="chipWarn" x="530" y="682" width="220" height="44" rx="12"/>
+  <text class="chipTextWarn" x="552" y="710">Редагувати формулу</text>
+
+  <text class="muted" x="78" y="820">Порада: контрольні завжди “всередині теми”, але мають 1 підсумкову оцінку.</text>
+</svg>
+
+

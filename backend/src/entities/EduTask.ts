@@ -4,6 +4,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  OneToOne,
   OneToMany,
   JoinColumn,
   CreateDateColumn,
@@ -12,6 +13,7 @@ import {
 import { EduLesson } from "./EduLesson";
 import { TestData } from "./TestData";
 import { EduGrade } from "./EduGrade";
+import { TaskTheory } from "./TaskTheory";
 
 @Entity("edu_tasks")
 export class EduTask {
@@ -45,6 +47,9 @@ export class EduTask {
 
   @OneToMany(() => EduGrade, (g) => g.task)
   grades!: EduGrade[];
+
+  @OneToOne(() => TaskTheory, (theory) => theory.eduTask, { nullable: true })
+  theory?: TaskTheory | null; // Теорія для завдання (опціонально)
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;

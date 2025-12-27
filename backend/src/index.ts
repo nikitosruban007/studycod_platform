@@ -40,6 +40,8 @@ import { tasksRouter } from "./routes/tasks";
 import { gradeRouter } from "./routes/gradeRoutes";
 import { streakRouter } from "./routes/streak";
 import eduRouter from "./routes/edu";
+import topicsRouter from "./routes/topics";
+import adminRouter from "./routes/admin";
 import { 
     PORT, 
     CORS_ORIGIN, 
@@ -53,6 +55,15 @@ import {
 const app = express();
 
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
+
+// ВАЖЛИВО: Express.json() за замовчуванням використовує UTF-8 для JSON відповідей
+// Але для гарантії коректного відображення кирилиці встановлюємо charset явно у всіх відповідях
+app.use((_req, res, next) => {
+  // Встановлюємо charset=utf-8 для всіх JSON відповідей
+  res.charset = 'utf-8';
+  next();
+});
+
 app.use(express.json({ limit: "512kb" }));
 app.use(express.urlencoded({ extended: false, limit: "512kb" }));
 
@@ -95,7 +106,9 @@ app.use("/profile", profileRouter);
 app.use("/tasks", tasksRouter);
 app.use("/grades", gradeRouter);
 app.use("/edu", eduRouter);
+app.use("/topics", topicsRouter);
 app.use("/streak", streakRouter);
+app.use("/admin", adminRouter);
 
 /* =====================
    ERROR HANDLING

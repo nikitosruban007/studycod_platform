@@ -37,9 +37,10 @@ export function generateUsername(
   const last = transliterate(lastName);
   const middle = middleName ? transliterate(middleName) : "";
 
-  // Формат: lastname_firstname_middle (якщо є)
-  let base = `${last}_${first}`;
-  if (middle) {
+  // Prefer a more natural format: firstname_lastname(_middle)
+  let base = `${first}_${last}`;
+  // Only add middle name when it provides value (avoid very long usernames by default)
+  if (middle && middle.length >= 3) {
     base += `_${middle}`;
   }
 

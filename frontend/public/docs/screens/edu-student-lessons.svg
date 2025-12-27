@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="880" viewBox="0 0 1400 880">
+  <defs>
+    <style>
+      .bg { fill:#0b0f14; }
+      .panel { fill:#0f1620; stroke:#233043; stroke-width:2; }
+      .muted { fill:#9fb3c8; font:500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .title { fill:#d6e1f0; font:700 30px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .mono { fill:#d6e1f0; font:700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .chip { fill:#0b1510; stroke:#00ff88; stroke-width:2; }
+      .chipText { fill:#00ff88; font:800 16px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .card { fill:#0b0f14; stroke:#233043; stroke-width:2; }
+      .accent { fill:#00ff88; }
+      .warn { fill:#ffd93d; }
+      .btn { fill:url(#g); stroke:#00ff88; stroke-width:2; }
+      .btnText { fill:#0b0f14; font:900 16px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+    </style>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00ff88"/>
+      <stop offset="1" stop-color="#00cc6f"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="880"/>
+
+  <!-- header -->
+  <rect class="panel" x="40" y="30" width="1320" height="84" rx="14"/>
+  <text class="mono" x="78" y="82">StudyCod EDU</text>
+  <rect class="chip" x="245" y="53" width="120" height="40" rx="10"/>
+  <text class="chipText" x="268" y="79">Уроки</text>
+  <text class="muted" x="1020" y="82">Учень · /edu/lessons</text>
+
+  <!-- main -->
+  <rect class="panel" x="40" y="140" width="1320" height="710" rx="14"/>
+  <text class="title" x="78" y="196">Уроки</text>
+  <text class="muted" x="78" y="230">Тут зібрані теми та контрольні роботи, призначені твоєму класу.</text>
+
+  <!-- topic card -->
+  <rect class="card" x="78" y="270" width="1244" height="150" rx="14"/>
+  <rect x="78" y="270" width="6" height="150" fill="#00ff88"/>
+  <text class="mono" x="110" y="320">Тема: Масиви</text>
+  <text class="muted" x="110" y="352">Практика: 3 завдання · Контрольні: 2 · Дедлайн: 27.12.2025</text>
+  <rect class="btn" x="110" y="372" width="220" height="44" rx="12" filter="url(#glow)"/>
+  <text class="btnText" x="138" y="400">Відкрити тему →</text>
+
+  <!-- nested control works -->
+  <rect class="panel" x="420" y="310" width="880" height="96" rx="12"/>
+  <text class="mono" x="450" y="350">Контрольні роботи у темі</text>
+  <text class="muted" x="450" y="378">Самостійна №1 · Тест + задачі · 45 хв · Статус: NOT_STARTED</text>
+  <rect class="chip" x="1090" y="334" width="190" height="44" rx="12"/>
+  <text class="chipText" x="1110" y="361">Відкрити контрольну</text>
+
+  <!-- announcements -->
+  <rect class="card" x="78" y="450" width="1244" height="170" rx="14"/>
+  <text class="mono" x="110" y="490">Оголошення класу</text>
+  <text class="muted" x="110" y="524">• Завтра контрольна по масивах. Підготуйтеся до тесту.</text>
+  <text class="muted" x="110" y="556">• Дедлайн на практичні завдання — до кінця тижня.</text>
+  <rect x="110" y="580" width="12" height="12" fill="#00ff88"/>
+  <text class="muted" x="132" y="591">Pinned</text>
+
+  <!-- footer hint -->
+  <text class="muted" x="78" y="800">Підказка: якщо відкривається не та сторінка — перевір параметр ?type=TOPIC або ?type=CONTROL</text>
+</svg>
+
+

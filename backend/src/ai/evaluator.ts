@@ -1,6 +1,5 @@
-import fetch from "node-fetch";
 import { Task } from "../entities/Task";
-import { pickOpenRouterKey } from "../services/openRouterKeys";
+import { getLLMProvider } from "../services/llm/provider";
 
 interface AiScoreResult {
   work: number;
@@ -33,18 +32,7 @@ export async function evaluateCodeWithAI(params: {
     integrity: number;
   };
 }): Promise<AiScoreResult> {
-  const apiKey = pickOpenRouterKey();
-  const model = process.env.OPENROUTER_MODEL || "openai/gpt-4.1-mini";
-
-  if (!apiKey) {
-    return {
-      work: 3,
-      optimization: 2,
-      integrity: 3,
-      feedback: "AI key is not configured. Static placeholder evaluation applied.",
-    };
-  }
-
+  const provider = getLLMProvider();
   const hasPrevious = !!(params.previousCode && params.previousGrade !== undefined);
 
   const systemPrompt = hasPrevious
@@ -88,24 +76,70 @@ ${params.code}
 \`\`\`
 `.trim();
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+  const schema = {
+    type: "object",
+    properties: {
+      work: { type: "number", minimum: 0, maximum: 5 },
+      optimization: { type: "number", minimum: 0, maximum: 4 },
+      integrity: { type: "number", minimum: 0, maximum: 3 },
+      feedback: { type: "string" },
+      ...(hasPrevious ? {
+        comparison: {
+          type: "object",
+          properties: {
+            changes: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  category: { type: "string" },
+                  delta: { type: "number" },
+                  reason: { type: "string" },
+                  codeLine: { type: "number" },
+                },
+              },
+            },
+          },
+        },
+      } : {}),
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.1,
-    }),
-  });
+    required: ["work", "optimization", "integrity", "feedback"],
+  };
 
-  if (!response.ok) {
-    console.error("OpenRouter error", await response.text());
+  try {
+    const parsed = await provider.generateJSON<any>(userPrompt, schema, systemPrompt, {
+      temperature: 0.1,
+    });
+
+    const work = clamp(Number(parsed.work ?? 0), 0, 5);
+    const optimization = clamp(Number(parsed.optimization ?? parsed.opt ?? 0), 0, 4);
+    const integrity = clamp(Number(parsed.integrity ?? 0), 0, 3);
+
+    const cleanFeedback = (text: string) => String(text).replace(/```json/gi, "").replace(/```/g, "").trim();
+
+    const result: AiScoreResult = {
+      work,
+      optimization,
+      integrity,
+      feedback: cleanFeedback(parsed.feedback ?? "").slice(0, 2000),
+    };
+
+    if (hasPrevious && parsed.comparison) {
+      result.comparison = {
+        hasPrevious: true,
+        previousGrade: params.previousGrade ?? null,
+        changes: (parsed.comparison.changes || []).map((c: any) => ({
+          category: c.category || "work",
+          delta: Number(c.delta || 0),
+          reason: String(c.reason || ""),
+          codeLine: c.codeLine ? Number(c.codeLine) : undefined,
+        })),
+      };
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error("LLM evaluation error", error);
     return {
       work: 2,
       optimization: 2,
@@ -113,58 +147,6 @@ ${params.code}
       feedback: "Не вдалося підключитись до ШІ. Застосовано загальну оцінку 2/2/2.",
     };
   }
-
-  const data: any = await response.json();
-  const content = data.choices?.[0]?.message?.content ?? "{}";
-
-  let parsed: any;
-  try {
-    let jsonContent = content.trim();
-    if (jsonContent.includes("```")) {
-      const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) jsonContent = jsonMatch[1];
-    }
-    parsed = JSON.parse(jsonContent);
-  } catch {
-    const workMatch = content.match(/"work"\s*:\s*(\d+)/i) || content.match(/work["\s:]*(\d+)/i);
-    const optMatch = content.match(/"optimization"\s*:\s*(\d+)/i) || content.match(/"opt"\s*:\s*(\d+)/i) || content.match(/optimization["\s:]*(\d+)/i);
-    const integrityMatch = content.match(/"integrity"\s*:\s*(\d+)/i) || content.match(/integrity["\s:]*(\d+)/i);
-    parsed = {
-      work: workMatch ? Number(workMatch[1]) : undefined,
-      optimization: optMatch ? Number(optMatch[1]) : undefined,
-      integrity: integrityMatch ? Number(integrityMatch[1]) : undefined,
-      feedback: content,
-      comparison: undefined,
-    };
-  }
-
-  const work = clamp(Number(parsed.work ?? 0), 0, 5);
-  const optimization = clamp(Number(parsed.optimization ?? parsed.opt ?? 0), 0, 4);
-  const integrity = clamp(Number(parsed.integrity ?? 0), 0, 3);
-
-  const cleanFeedback = (text: string) => String(text).replace(/```json/gi, "").replace(/```/g, "").trim();
-
-  const result: AiScoreResult = {
-    work,
-    optimization,
-    integrity,
-    feedback: cleanFeedback(parsed.feedback ?? content).slice(0, 2000),
-  };
-
-  if (hasPrevious && parsed.comparison) {
-    result.comparison = {
-      hasPrevious: true,
-      previousGrade: params.previousGrade ?? null,
-      changes: (parsed.comparison.changes || []).map((c: any) => ({
-        category: c.category || "work",
-        delta: Number(c.delta || 0),
-        reason: String(c.reason || ""),
-        codeLine: c.codeLine ? Number(c.codeLine) : undefined,
-      })),
-    };
-  }
-
-  return result;
 }
 
 export function computeTotalFromParts(parts: { work: number; optimization: number; integrity: number }): number {

@@ -1,10 +1,18 @@
 import React, { useEffect, useState, Suspense, useCallback, useMemo, startTransition } from "react";
-import { Routes, Route, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Routes, Route, useLocation, useNavigate, useSearchParams, Navigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { getMe } from "./lib/api/profile";
 import type { User } from "./types";
-import { Code2, User as UserIcon, FileText, Home, Menu, X, GraduationCap, BookOpen } from "lucide-react";
+import { Code2, User as UserIcon, FileText, Home, Menu, X, GraduationCap, BookOpen, Shield, HelpCircle } from "lucide-react";
 import { Button } from "./components/ui/Button";
 import { Logo } from "./components/Logo";
+import { useTranslation } from "react-i18next";
+import { AnimatedPage } from "./components/layout/AnimatedPage";
+import { staggerContainer, fadeUpItem } from "./lib/motion";
+import { TerminalLoader } from "./components/ui/TerminalLoader";
+import { DocsPage } from "./pages/DocsPage";
+import { OnboardingEntry } from "./components/onboarding/OnboardingEntry";
+import { applyTheme, getCurrentTheme, type AppTheme } from "./theme";
 
 // Lazy loading всіх сторінок - завантажуються тільки коли потрібні
 const AuthPage = React.lazy(() => import("./pages/AuthPage").then((mod) => ({ default: mod.AuthPage })));
@@ -26,6 +34,15 @@ const ClassDetailsPage = React.lazy(() =>
 );
 const CreateLessonPage = React.lazy(() =>
   import("./pages/CreateLessonPage").then((mod) => ({ default: mod.CreateLessonPage }))
+);
+const CreateTopicPage = React.lazy(() =>
+  import("./pages/CreateTopicPage").then((mod) => ({ default: mod.CreateTopicPage }))
+);
+const TopicDetailsPage = React.lazy(() =>
+  import("./pages/TopicDetailsPage").then((mod) => ({ default: mod.TopicDetailsPage }))
+);
+const ControlWorkDetailsPage = React.lazy(() =>
+  import("./pages/ControlWorkDetailsPage").then((mod) => ({ default: mod.ControlWorkDetailsPage }))
 );
 const StudentDashboardPage = React.lazy(() =>
   import("./pages/StudentDashboardPage").then((mod) => ({ default: mod.StudentDashboardPage }))
@@ -51,19 +68,28 @@ const ClassGradebookPage = React.lazy(() =>
 const GoogleAuthCompletePage = React.lazy(() =>
   import("./pages/GoogleAuthCompletePage").then((mod) => ({ default: mod.GoogleAuthCompletePage }))
 );
-
-// Loading fallback компонент
-const PageLoader: React.FC = () => (
-  <div className="h-screen flex items-center justify-center text-text-primary font-mono bg-bg-base">
-    Завантаження...
-  </div>
+const AdminDashboardPage = React.lazy(() =>
+  import("./pages/AdminDashboardPage").then((mod) => ({ default: mod.AdminDashboardPage }))
 );
 
-type Page = "home" | "tasks" | "grades" | "profile" | "teacher" | "student";
+// Loading fallback компонент
+const PageLoader: React.FC = () => {
+  const { t } = useTranslation();
+  return (
+    <div className="h-screen flex items-center justify-center text-text-primary font-mono bg-bg-base">
+      <TerminalLoader label={t("loading")} sublabel="StudyCod EDU" />
+    </div>
+  );
+};
+
+type Page = "home" | "tasks" | "grades" | "profile" | "teacher" | "student" | "admin";
 
 const AppContent: React.FC = React.memo(() => {
+  const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [page, setPage] = useState<Page>("home");
   const [user, setUser] = useState<User | null>(null);
+  const [theme, setTheme] = useState<AppTheme>(() => getCurrentTheme());
   const [loading, setLoading] = useState(true);
   const [navOpen, setNavOpen] = useState(false);
 
@@ -113,7 +139,13 @@ const AppContent: React.FC = React.memo(() => {
         setUser(u);
         // Auto-redirect to tasks if coming from auth (тільки для Personal)
         const fromAuth = sessionStorage.getItem("fromAuth");
-        if (fromAuth && (!u.userMode || u.userMode === "PERSONAL")) {
+        if (fromAuth && u.role === "SYSTEM_ADMIN") {
+          // Для адмінів - на адмін панель
+          startTransition(() => {
+            setPage("admin");
+          });
+          sessionStorage.removeItem("fromAuth");
+        } else if (fromAuth && (!u.userMode || u.userMode === "PERSONAL")) {
           startTransition(() => {
             setPage("tasks");
           });
@@ -144,8 +176,8 @@ const AppContent: React.FC = React.memo(() => {
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem("token");
-    setUser(null);
     startTransition(() => {
+      setUser(null);
       setPage("home");
     });
   }, []);
@@ -165,6 +197,14 @@ const AppContent: React.FC = React.memo(() => {
     setNavOpen(false);
   }, []);
 
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next: AppTheme = prev === "dark" ? "light" : "dark";
+      applyTheme(next);
+      return next;
+    });
+  }, []);
+
   // Мемоізація курсів та режимів - ВСІ hooks ПЕРЕД умовними return
   // Використовуємо стабільні значення, щоб уникнути зміни кількості hooks
   const courseLabel = useMemo(() => {
@@ -180,7 +220,7 @@ const AppContent: React.FC = React.memo(() => {
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center text-text-primary font-mono">
-        Завантаження...
+        {t('loading')}
       </div>
     );
   }
@@ -225,7 +265,7 @@ const AppContent: React.FC = React.memo(() => {
                 }`}
               >
                 <Home className="w-4 h-4" />
-                Головна
+                {t('home')}
               </button>
               <button
                 onClick={() => handleSetPage("tasks")}
@@ -236,7 +276,7 @@ const AppContent: React.FC = React.memo(() => {
                 }`}
               >
                 <FileText className="w-4 h-4" />
-                Завдання
+                {t('tasks')}
               </button>
               <button
                 onClick={() => handleSetPage("grades")}
@@ -247,9 +287,32 @@ const AppContent: React.FC = React.memo(() => {
                 }`}
               >
                 <FileText className="w-4 h-4" />
-                Оцінки
+                {t('grades')}
               </button>
             </>
+          )}
+
+          <button
+            onClick={() => navigate("/docs")}
+            className="px-4 py-2 text-sm font-mono border transition-fast flex items-center gap-2 border-border text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+          >
+            <HelpCircle className="w-4 h-4" />
+            {t("help")}
+          </button>
+
+          {/* Admin Panel Button */}
+          {user.role === "SYSTEM_ADMIN" && (
+            <button
+              onClick={() => handleSetPage("admin")}
+              className={`px-4 py-2 text-sm font-mono border transition-fast flex items-center gap-2 ${
+                page === "admin"
+                  ? "border-primary bg-bg-hover text-primary"
+                  : "border-border text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+              Admin
+            </button>
           )}
 
           {/* Navigation для Educational mode */}
@@ -263,7 +326,7 @@ const AppContent: React.FC = React.memo(() => {
               }`}
             >
               <GraduationCap className="w-4 h-4" />
-              Мої класи
+              {t('myClasses')}
             </button>
           )}
 
@@ -278,7 +341,7 @@ const AppContent: React.FC = React.memo(() => {
                 }`}
               >
                 <BookOpen className="w-4 h-4" />
-                Мій журнал
+                {t('myJournal')}
               </button>
               <button
                 onClick={() => {
@@ -287,7 +350,7 @@ const AppContent: React.FC = React.memo(() => {
                 className="px-4 py-2 text-sm font-mono border border-border text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-fast flex items-center gap-2"
               >
                 <FileText className="w-4 h-4" />
-                Уроки
+                {t('lessons')}
               </button>
             </>
           )}
@@ -296,12 +359,30 @@ const AppContent: React.FC = React.memo(() => {
 
           {/* Profile & Menu */}
           <div className="flex items-center gap-2">
+            {/* Language Toggle */}
+            <button
+              onClick={() => i18n.changeLanguage(i18n.language === 'uk' ? 'en' : 'uk')}
+              className="px-3 py-1 text-xs font-mono border border-border hover:bg-bg-hover transition-fast"
+              title={i18n.language === 'uk' ? t('switchToEnglish') : t('switchToUkrainian')}
+            >
+              {i18n.language === 'uk' ? 'EN' : 'UA'}
+            </button>
+
+            {/* Theme Toggle */}
+            <button
+              onClick={toggleTheme}
+              className="px-3 py-1 text-xs font-mono border border-border hover:bg-bg-hover transition-fast"
+              title={theme === "dark" ? t("switchToLightTheme") : t("switchToDarkTheme")}
+            >
+              {theme === "dark" ? "Light" : "Dark"}
+            </button>
+            
             <button
               onClick={() => handleSetPage("profile")}
               className={`w-8 h-8 border flex items-center justify-center hover:bg-bg-hover transition-fast ${
                 page === "profile" ? "border-primary" : "border-border"
               }`}
-              title="Профіль"
+              title={t('profile')}
             >
               <UserIcon className="w-4 h-4 text-text-secondary" />
             </button>
@@ -309,7 +390,7 @@ const AppContent: React.FC = React.memo(() => {
               <button
                 onClick={handleToggleNav}
                 className="w-8 h-8 border border-border flex items-center justify-center hover:bg-bg-hover transition-fast"
-                title="Меню"
+                title={t('menu')}
               >
                 {navOpen ? <X className="w-4 h-4 text-text-secondary" /> : <Menu className="w-4 h-4 text-text-secondary" />}
               </button>
@@ -322,7 +403,7 @@ const AppContent: React.FC = React.memo(() => {
                         onClick={handleLogout}
                         className="px-4 py-2 text-left text-sm font-mono hover:bg-bg-hover transition-fast text-accent-error"
                       >
-                        Вийти
+                        {t('logout')}
                       </button>
                     </nav>
                   </div>
@@ -334,16 +415,21 @@ const AppContent: React.FC = React.memo(() => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<PageLoader />}>
-          {page === "home" && <HomePage user={user} onNavigate={handleSetPage} />}
-          {page === "tasks" && user.userMode !== "EDUCATIONAL" && <TasksPage user={user} />}
-          {page === "grades" && user.userMode !== "EDUCATIONAL" && <GradesPage onNavigate={handleSetPage} />}
-          {page === "teacher" && user.userMode === "EDUCATIONAL" && !user.studentId && <TeacherDashboardPage />}
-          {page === "student" && user.userMode === "EDUCATIONAL" && <StudentDashboardPage user={user} />}
-        {page === "profile" && <ProfilePage user={user} onUserChange={setUser} />}
+          {(() => {
+            if (page === "admin" && user.role === "SYSTEM_ADMIN") return <AdminDashboardPage />;
+            if (page === "home") return <HomePage user={user} onNavigate={handleSetPage} />;
+            if (page === "tasks" && user.userMode !== "EDUCATIONAL") return <TasksPage user={user} />;
+            if (page === "grades" && user.userMode !== "EDUCATIONAL") return <GradesPage onNavigate={handleSetPage} />;
+            if (page === "teacher" && user.userMode === "EDUCATIONAL" && !user.studentId) return <TeacherDashboardPage />;
+            if (page === "student" && user.userMode === "EDUCATIONAL") return <StudentDashboardPage user={user} />;
+            if (page === "profile") return <ProfilePage user={user} onUserChange={setUser} />;
+            return null;
+          })()}
         </Suspense>
       </main>
+      <OnboardingEntry />
     </div>
   );
 });
@@ -351,63 +437,91 @@ const AppContent: React.FC = React.memo(() => {
 AppContent.displayName = "AppContent";
 
 export const App: React.FC = () => {
+  const location = useLocation();
   return (
-    <Routes>
-      <Route
-        path="/verify-email"
-        element={
-          <Suspense fallback={<PageLoader />}>
-            <VerifyEmailWrapper />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/auth/reset-password"
-        element={
-          <Suspense fallback={<PageLoader />}>
-            <ResetPasswordPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/auth/google/complete"
-        element={
-          <Suspense fallback={<PageLoader />}>
-            <GoogleAuthWrapper />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/auth/google/success"
-        element={
-          <Suspense fallback={<PageLoader />}>
-            <GoogleAuthSuccessWrapper />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/auth/google/error"
-        element={
-          <Suspense fallback={<PageLoader />}>
-            <GoogleAuthErrorPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/edu/*"
-        element={
-          <Suspense fallback={<PageLoader />}>
-            <EduRoutes />
-          </Suspense>
-        }
-      />
-      <Route path="*" element={<AppContent />} />
-    </Routes>
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route
+          path="/verify-email"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <AnimatedPage>
+                <VerifyEmailWrapper />
+              </AnimatedPage>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/auth/reset-password"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <AnimatedPage>
+                <ResetPasswordPage />
+              </AnimatedPage>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/auth/google/complete"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <AnimatedPage>
+                <GoogleAuthWrapper />
+              </AnimatedPage>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/auth/google/success"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <AnimatedPage>
+                <GoogleAuthSuccessWrapper />
+              </AnimatedPage>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/auth/google/error"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <AnimatedPage>
+                <GoogleAuthErrorPage />
+              </AnimatedPage>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/docs"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <AnimatedPage>
+                <DocsPage />
+              </AnimatedPage>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/edu/*"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <AnimatedPage>
+                <EduRoutes />
+              </AnimatedPage>
+            </Suspense>
+          }
+        />
+        <Route path="*" element={<AppContent />} />
+      </Routes>
+    </AnimatePresence>
   );
 };
 
 const EduRoutes: React.FC = React.memo(() => {
+  const { t, i18n } = useTranslation();
+  const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
+  const [theme, setTheme] = useState<AppTheme>(() => getCurrentTheme());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -436,6 +550,14 @@ const EduRoutes: React.FC = React.memo(() => {
 
   const handleAuth = useCallback((u: User) => {
     setUser(u);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next: AppTheme = prev === "dark" ? "light" : "dark";
+      applyTheme(next);
+      return next;
+    });
   }, []);
 
   // ВСІ hooks ПЕРЕД умовними return
@@ -470,27 +592,72 @@ const EduRoutes: React.FC = React.memo(() => {
             {courseLabel}
           </div>
         </div>
-        <button
-          onClick={() => window.location.href = "/"}
-          className="px-4 py-2 border border-border text-sm font-mono hover:bg-bg-hover transition-fast"
-        >
-          На головну
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => i18n.changeLanguage(i18n.language === 'uk' ? 'en' : 'uk')}
+            className="px-3 py-1 text-xs font-mono border border-border hover:bg-bg-hover transition-fast"
+            title={i18n.language === 'uk' ? t('switchToEnglish') : t('switchToUkrainian')}
+          >
+            {i18n.language === 'uk' ? 'EN' : 'UA'}
+          </button>
+          <button
+            onClick={toggleTheme}
+            className="px-3 py-1 text-xs font-mono border border-border hover:bg-bg-hover transition-fast"
+            title={theme === "dark" ? t("switchToLightTheme") : t("switchToDarkTheme")}
+          >
+            {theme === "dark" ? "Light" : "Dark"}
+          </button>
+          <button
+            onClick={() => window.location.href = "/docs"}
+            className="px-4 py-2 border border-border text-sm font-mono hover:bg-bg-hover transition-fast flex items-center gap-2"
+          >
+            <HelpCircle className="w-4 h-4" />
+            {t("help")}
+          </button>
+          <button
+            onClick={() => window.location.href = "/"}
+            className="px-4 py-2 border border-border text-sm font-mono hover:bg-bg-hover transition-fast"
+          >
+            {t('toHome')}
+          </button>
+        </div>
       </header>
-      <main className="flex-1 overflow-hidden flex flex-col">
+      <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/classes/:classId" element={<ClassDetailsPage />} />
-            <Route path="/classes/:classId/lessons/new" element={<CreateLessonPage />} />
-            <Route path="/classes/:classId/summary-grades" element={<SummaryGradesPage />} />
-            <Route path="/classes/:classId/gradebook" element={<ClassGradebookPage />} />
-            <Route path="/lessons" element={<StudentLessonsPage />} />
-            <Route path="/lessons/:lessonId" element={<LessonDetailsPage />} />
-            <Route path="/tasks/:taskId" element={<StudentTaskPage />} />
-            <Route path="/grades/:gradeId" element={<GradeDetailsPage />} />
-          </Routes>
+          <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
+              {/* /edu landing: never show blank */}
+              <Route
+                index
+                element={
+                  user.studentId ? (
+                    <Navigate to="lessons" replace />
+                  ) : (
+                    <AnimatedPage>
+                      <TeacherDashboardPage />
+                    </AnimatedPage>
+                  )
+                }
+              />
+              <Route path="classes/:classId" element={<AnimatedPage><ClassDetailsPage /></AnimatedPage>} />
+              <Route path="classes/:classId/lessons/new" element={<AnimatedPage><CreateLessonPage /></AnimatedPage>} />
+              <Route path="classes/:classId/topics/new" element={<AnimatedPage><CreateTopicPage /></AnimatedPage>} />
+              <Route path="topics/:topicId" element={<AnimatedPage><TopicDetailsPage /></AnimatedPage>} />
+              <Route path="control-works/:controlWorkId" element={<AnimatedPage><ControlWorkDetailsPage /></AnimatedPage>} />
+              <Route path="/classes/:classId/summary-grades" element={<AnimatedPage><SummaryGradesPage /></AnimatedPage>} />
+              <Route path="/classes/:classId/gradebook" element={<AnimatedPage><ClassGradebookPage /></AnimatedPage>} />
+              <Route path="/lessons" element={<AnimatedPage><StudentLessonsPage /></AnimatedPage>} />
+              <Route path="/lessons/:lessonId" element={<AnimatedPage><LessonDetailsPage /></AnimatedPage>} />
+              <Route path="/tasks/:taskId" element={<AnimatedPage><StudentTaskPage /></AnimatedPage>} />
+              <Route path="/grades/:gradeId" element={<AnimatedPage><GradeDetailsPage /></AnimatedPage>} />
+              <Route path="/docs" element={<AnimatedPage><DocsPage /></AnimatedPage>} />
+              {/* fallback: avoid blank on unknown edu paths */}
+              <Route path="*" element={<Navigate to={user.studentId ? "lessons" : ""} replace />} />
+            </Routes>
+          </AnimatePresence>
         </Suspense>
       </main>
+      <OnboardingEntry />
     </div>
   );
 });
@@ -553,10 +720,10 @@ const GoogleAuthErrorPage: React.FC = React.memo(() => {
     <div className="min-h-screen flex items-center justify-center bg-bg-base">
       <div className="w-full max-w-md bg-bg-surface border border-border p-8">
         <div className="text-xs font-mono text-accent-error border border-accent-error bg-bg-code px-3 py-2">
-          Помилка авторизації через Google. Спробуйте ще раз.
+          {t("googleAuthError")}
         </div>
         <Button onClick={() => navigate("/")} className="w-full mt-4">
-          Повернутись на головну
+          {t("backToHome")}
         </Button>
       </div>
     </div>

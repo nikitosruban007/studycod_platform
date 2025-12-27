@@ -1,6 +1,7 @@
 
 import React from "react";
 import { LayoutDashboard, ListTodo, BarChart3, User2, LogOut } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { User } from "../../types";
 
 interface Props {
@@ -11,11 +12,12 @@ interface Props {
 }
 
 export const Sidebar: React.FC<Props> = ({ current, onChange, user, onLogout }) => {
+  const { t } = useTranslation();
   const items: { id: Props["current"]; label: string; icon: React.ReactNode }[] = [
-    { id: "dashboard", label: "Головна", icon: <LayoutDashboard className="w-4 h-4" /> },
-    { id: "tasks", label: "Завдання", icon: <ListTodo className="w-4 h-4" /> },
-    { id: "grades", label: "Оцінки", icon: <BarChart3 className="w-4 h-4" /> },
-    { id: "profile", label: "Профіль", icon: <User2 className="w-4 h-4" /> },
+    { id: "dashboard", label: t("home"), icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: "tasks", label: t("tasks"), icon: <ListTodo className="w-4 h-4" /> },
+    { id: "grades", label: t("grades"), icon: <BarChart3 className="w-4 h-4" /> },
+    { id: "profile", label: t("profile"), icon: <User2 className="w-4 h-4" /> },
   ];
   return (
     <aside className="w-64 bg-bg-surface border-r border-border flex flex-col">
@@ -47,7 +49,9 @@ export const Sidebar: React.FC<Props> = ({ current, onChange, user, onLogout }) 
           </div>
           <div>
             <div className="font-medium text-text-primary text-xs">{user.username}</div>
-            <div className="text-[10px] text-text-muted">{user.course === "JAVA" ? "Java course" : "Python course"}</div>
+            <div className="text-[10px] text-text-muted">
+              {user.course === "JAVA" ? t("javaCourse") : t("pythonCourse")}
+            </div>
           </div>
         </div>
         <button onClick={onLogout} className="text-accent-error hover:opacity-80 transition-fast">

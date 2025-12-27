@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+  <defs>
+    <style>
+      .bg { fill: #0b0f14; }
+      .panel { fill: #0f1620; stroke: #233043; stroke-width: 2; }
+      .title { fill: #d6e1f0; font: 600 34px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .text { fill: #9fb3c8; font: 500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .label { fill: #d6e1f0; font: 600 20px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .good { fill: #0b1510; stroke: #29ff8a; stroke-width: 2; }
+      .warn { fill: #17120b; stroke: #ffbf3c; stroke-width: 2; }
+      .chipText { fill: #d6e1f0; font: 700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .arrow { stroke: #3a4f6a; stroke-width: 3; fill: none; marker-end: url(#m); }
+    </style>
+    <marker id="m" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#3a4f6a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1200" height="675"/>
+  <text class="title" x="60" y="78">CONTROL (контрольна/самостійна) — як це працює</text>
+  <text class="text" x="60" y="115">Учень отримує 1 підсумкову оцінку, але процес може включати тест і/або практику.</text>
+
+  <rect class="panel" x="60" y="160" width="1080" height="450" rx="10"/>
+
+  <rect class="warn" x="110" y="220" width="260" height="70" rx="12"/>
+  <text class="chipText" x="130" y="250">Відкрив контрольну</text>
+  <text class="text" x="130" y="275">ще не старт</text>
+
+  <path class="arrow" d="M370 255 L 460 255"/>
+
+  <rect class="good" x="460" y="220" width="300" height="70" rx="12"/>
+  <text class="chipText" x="480" y="250">Почати контрольну</text>
+  <text class="text" x="480" y="275">стартує таймер</text>
+
+  <path class="arrow" d="M760 255 L 850 255"/>
+
+  <rect class="panel" x="850" y="200" width="240" height="110" rx="12"/>
+  <text class="label" x="870" y="235">Спроба</text>
+  <text class="text" x="870" y="265">NOT_STARTED</text>
+  <text class="text" x="870" y="292">→ IN_PROGRESS</text>
+
+  <path class="arrow" d="M610 290 L 610 350"/>
+
+  <rect class="panel" x="200" y="350" width="820" height="210" rx="12"/>
+  <text class="label" x="230" y="390">Виконання</text>
+  <text class="text" x="230" y="425">1) Тест (теорія) — якщо увімкнено</text>
+  <text class="text" x="230" y="455">2) Контрольні задачі — якщо увімкнено</text>
+  <text class="text" x="230" y="485">3) Формула → підсумкова оцінка (1 число)</text>
+  <text class="text" x="230" y="515">4) COMPLETED тільки коли виконано все необхідне</text>
+</svg>
+
+

@@ -3,6 +3,8 @@ export type CourseLanguage = "JAVA" | "PYTHON";
 
 export type UserMode = "PERSONAL" | "EDUCATIONAL";
 
+export type UserRole = "USER" | "TEACHER" | "SYSTEM_ADMIN";
+
 export interface User {
   id: number;
   username: string;
@@ -10,6 +12,7 @@ export interface User {
   difus: number;
   avatarUrl: string | null;
   userMode?: UserMode;
+  role?: UserRole;
   googleId?: string | null;
   // Для учнів
   studentId?: number;
@@ -34,6 +37,7 @@ export interface Task {
   descriptionMarkdown: string;
   starterCode: string;
   userCode: string;
+  finalCode?: string | null;
   status: "OPEN" | "SUBMITTED" | "GRADED";
   lessonInTopic: number;
   repeatAttempt: number;
@@ -52,7 +56,5 @@ export interface Grade {
   comparisonFeedback?: string | null;
   previousGrade?: number | null;
   createdAt: string;
-  task: Task & { topic?: Topic | null };
-}
   task: Task & { topic?: Topic | null };
 }

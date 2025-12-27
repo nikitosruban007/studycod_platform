@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "../",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "baseUrl": "..",
+    "paths": {
+      "@shared/*": ["shared/*"],
+      "services/*": ["backend/src/services/*"],
+      "utils/*": ["backend/src/utils/*"]
+    },
+    "types": []
+  },
+  "include": [
+    "../backend/src/services/llm/**/*",
+    "../backend/src/services/taskExamples.ts",
+    "../shared/**/*",
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "ts-node": {
+    "require": ["tsconfig-paths/register"],
+    "compilerOptions": {
+      "baseUrl": "..",
+      "paths": {
+        "@shared/*": ["shared/*"]
+      }
+    }
+  }
+}

@@ -1,10 +1,13 @@
 // frontend/src/pages/ResetPasswordPage.tsx
 import React, { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "../components/ui/Button";
 import { resetPassword } from "../lib/api/auth";
 
 export const ResetPasswordPage: React.FC = () => {
+  const { t, i18n } = useTranslation();
+  const tr = (uk: string, en: string) => (i18n.language?.toLowerCase().startsWith("en") ? en : uk);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get("token");
@@ -16,7 +19,7 @@ export const ResetPasswordPage: React.FC = () => {
 
   useEffect(() => {
     if (!token) {
-      setError("Токен відновлення паролю відсутній");
+      setError(tr("Токен відновлення паролю відсутній", "Password reset token is missing"));
     }
   }, [token]);
 
@@ -26,34 +29,34 @@ export const ResetPasswordPage: React.FC = () => {
     setSuccess(null);
 
     if (!token) {
-      setError("Токен відновлення паролю відсутній");
+      setError(tr("Токен відновлення паролю відсутній", "Password reset token is missing"));
       return;
     }
 
     if (!newPassword || !confirmPassword) {
-      setError("Введіть новий пароль та підтвердження");
+      setError(tr("Введіть новий пароль та підтвердження", "Enter a new password and confirmation"));
       return;
     }
 
     if (newPassword.length < 6) {
-      setError("Пароль повинен містити мінімум 6 символів");
+      setError(tr("Пароль повинен містити мінімум 6 символів", "Password must be at least 6 characters"));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("Паролі не співпадають");
+      setError(tr("Паролі не співпадають", "Passwords do not match"));
       return;
     }
 
     setLoading(true);
     try {
       await resetPassword(token, newPassword);
-      setSuccess("Пароль успішно змінено! Перенаправлення на сторінку входу...");
+      setSuccess(tr("Пароль успішно змінено! Перенаправлення на сторінку входу...", "Password changed successfully! Redirecting to login..."));
       setTimeout(() => {
         navigate("/");
       }, 2000);
     } catch (err: any) {
-      setError(err?.response?.data?.message || "Помилка зміни паролю");
+      setError(err?.response?.data?.message || tr("Помилка зміни паролю", "Failed to change password"));
     } finally {
       setLoading(false);
     }
@@ -66,17 +69,17 @@ export const ResetPasswordPage: React.FC = () => {
           <div className="w-12 h-12 border border-primary flex items-center justify-center font-mono text-xl text-primary">
             &lt;/&gt;
           </div>
-          <h1 className="mt-4 text-xl font-mono text-text-primary">Відновлення паролю</h1>
+          <h1 className="mt-4 text-xl font-mono text-text-primary">{tr("Відновлення паролю", "Reset password")}</h1>
         </div>
 
         {!token ? (
           <div className="text-xs font-mono text-accent-error border border-accent-error bg-bg-code px-3 py-2">
-            Токен відновлення паролю відсутній або недійсний
+            {tr("Токен відновлення паролю відсутній або недійсний", "Password reset token is missing or invalid")}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-xs font-mono text-text-secondary mb-1 block">Новий пароль</label>
+              <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("Новий пароль", "New password")}</label>
               <input
                 type="password"
                 className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -87,7 +90,7 @@ export const ResetPasswordPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="text-xs font-mono text-text-secondary mb-1 block">Підтвердження паролю</label>
+              <label className="text-xs font-mono text-text-secondary mb-1 block">{tr("Підтвердження паролю", "Confirm password")}</label>
               <input
                 type="password"
                 className="w-full border border-border bg-bg-code px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-primary transition-fast"
@@ -108,7 +111,7 @@ export const ResetPasswordPage: React.FC = () => {
               </div>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Обробка..." : "Змінити пароль"}
+              {loading ? tr("Обробка...", "Processing...") : tr("Змінити пароль", "Change password")}
             </Button>
             <div className="text-center">
               <button
@@ -116,7 +119,7 @@ export const ResetPasswordPage: React.FC = () => {
                 onClick={() => navigate("/")}
                 className="text-xs font-mono text-text-secondary hover:text-primary transition-fast"
               >
-                Повернутись до входу
+                {tr("Повернутись до входу", "Back to login")}
               </button>
             </div>
           </form>

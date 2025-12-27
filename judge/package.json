@@ -1,0 +1,20 @@
+{
+  "name": "studycod-judge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StudyCod standalone judge worker (nsjail-based, low-RAM, production-ready)",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "node --enable-source-maps node_modules/tsx/dist/cli.cjs index.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2"
+  }
+}
+
+

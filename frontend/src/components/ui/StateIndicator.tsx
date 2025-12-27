@@ -1,5 +1,6 @@
 import React from "react";
 import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type State = "idle" | "evaluating" | "success" | "error" | "logic-warning";
 
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export const StateIndicator: React.FC<Props> = ({ state, message, className }) => {
+  const { i18n } = useTranslation();
+  const tr = (uk: string, en: string) => (i18n.language?.toLowerCase().startsWith("en") ? en : uk);
   if (state === "idle") return null;
 
   const config = {
@@ -18,28 +21,28 @@ export const StateIndicator: React.FC<Props> = ({ state, message, className }) =
       color: "text-secondary",
       bg: "bg-bg-code",
       border: "border-secondary",
-      message: message || "Оцінювання...",
+      message: message || tr("Оцінювання...", "Evaluating..."),
     },
     success: {
       icon: CheckCircle2,
       color: "text-accent-success",
       bg: "bg-bg-code",
       border: "border-accent-success",
-      message: message || "Успішно",
+      message: message || tr("Успішно", "Success"),
     },
     error: {
       icon: XCircle,
       color: "text-accent-error",
       bg: "bg-bg-code",
       border: "border-accent-error",
-      message: message || "Помилка",
+      message: message || tr("Помилка", "Error"),
     },
     "logic-warning": {
       icon: AlertTriangle,
       color: "text-accent-logic-warn",
       bg: "bg-bg-code",
       border: "border-accent-logic-warn",
-      message: message || "Попередження",
+      message: message || tr("Попередження", "Warning"),
     },
   };
 

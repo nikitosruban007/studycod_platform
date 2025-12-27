@@ -34,6 +34,7 @@ function buildUserDto(user: User) {
     difus: difusValue ?? 0,
     avatarUrl: user.avatarUrl ?? null,
     userMode: user.userMode,
+    role: user.role || null,
     googleId: user.googleId ?? null,
   };
 }
@@ -42,6 +43,18 @@ const registerSchema = z.object({
   username: z.string().min(3).max(50),
   email: z.string().email(),
   password: z.string().min(8),
+  course: z.string().optional(),
+  lang: z.string().optional(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  birthDay: z.number().int().min(1).max(31),
+  birthMonth: z.number().int().min(1).max(12),
+});
+
+const googleCompleteSchema = z.object({
+  token: z.string().min(1),
+  username: z.string().min(3).max(50),
+  password: z.string().min(6),
   course: z.string().optional(),
   lang: z.string().optional(),
   firstName: z.string().min(1),
@@ -99,6 +112,8 @@ authRouter.post("/register", async (req: Request, res: Response) => {
       lastName,
       birthDay,
       birthMonth,
+      role: "USER", // За замовчуванням USER для нових користувачів
+      userMode: "PERSONAL", // Явно встановлюємо, хоча це і так default
     });
 
     await userRepo().save(user);
@@ -122,7 +137,7 @@ authRouter.post("/register", async (req: Request, res: Response) => {
    ===================== */
 authRouter.post("/login", async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body as any;
+    const { username, password } = req.body as { username?: string; password?: string };
 
     if (!username || !password) {
       return res.status(400).json({ message: "USERNAME_AND_PASSWORD_REQUIRED" });
@@ -141,7 +156,7 @@ authRouter.post("/login", async (req: Request, res: Response) => {
     }
 
     const token = jwt.sign(
-        { userId: user.id, lang: user.lang },
+        { userId: user.id, lang: user.lang, role: user.role },
         JWT_SECRET,
         { expiresIn: "7d" }
     );
@@ -165,7 +180,7 @@ authRouter.get(
     }),
     async (req: Request, res: Response) => {
       try {
-        const user = req.user as any;
+        const user = req.user as User & { isNewUser?: boolean };
 
         if (user.isNewUser) {
           const tempToken = jwt.sign({ ...user, temp: true }, JWT_SECRET, { expiresIn: "10m" });
@@ -175,7 +190,7 @@ authRouter.get(
         }
 
         const token = jwt.sign(
-            { userId: user.id, lang: user.lang },
+            { userId: user.id, lang: user.lang, role: user.role },
             JWT_SECRET,
             { expiresIn: "7d" }
         );
@@ -191,4 +206,184 @@ authRouter.get(
       }
     }
 );
+
+authRouter.post("/google/complete", async (req: Request, res: Response) => {
+  try {
+    const validated = googleCompleteSchema.safeParse(req.body);
+    if (!validated.success) {
+      return res.status(400).json({ message: "INVALID_INPUT", errors: validated.error.errors });
+    }
+
+    const {
+      token,
+      username,
+      password,
+      course,
+      lang,
+      firstName,
+      lastName,
+      birthDay,
+      birthMonth,
+    } = validated.data;
+
+    let payload: any;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(400).json({ message: "INVALID_TOKEN" });
+    }
+
+    if (!payload || payload.temp !== true) {
+      return res.status(400).json({ message: "INVALID_TOKEN" });
+    }
+
+    const googleId: string | null = payload.googleId || null;
+    const email: string | null = payload.email || null;
+    const avatarUrl: string | null = payload.avatarUrl || null;
+
+    if (!googleId) {
+      return res.status(400).json({ message: "GOOGLE_ID_REQUIRED" });
+    }
+    if (!email) {
+      return res.status(400).json({ message: "EMAIL_REQUIRED" });
+    }
+
+    // If user already exists for this googleId/email — treat as login
+    const existingByGoogle = await userRepo().findOne({ where: { googleId } });
+    if (existingByGoogle) {
+      const jwtToken = jwt.sign(
+        { userId: existingByGoogle.id, lang: existingByGoogle.lang, role: existingByGoogle.role },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+      return res.json({ token: jwtToken, user: buildUserDto(existingByGoogle) });
+    }
+
+    const existingByEmail = await userRepo().findOne({ where: { email } });
+    if (existingByEmail) {
+      // Account already exists (should have been linked during Google login)
+      // Return a safe error so user doesn't accidentally create duplicates.
+      return res.status(400).json({ message: "EMAIL_ALREADY_EXISTS" });
+    }
+
+    const existingByUsername = await userRepo().findOne({ where: { username } });
+    if (existingByUsername) {
+      return res.status(400).json({ message: "USERNAME_ALREADY_EXISTS" });
+    }
+
+    const normalizedLang = normalizeLang(course || lang || "JAVA");
+    const hash = await bcrypt.hash(password, 10);
+
+    const user = userRepo().create({
+      username,
+      email,
+      password: hash,
+      lang: normalizedLang,
+      difusJava: 0,
+      difusPython: 0,
+      emailVerified: true, // Google email is already verified
+      emailVerificationToken: null,
+      googleId,
+      avatarUrl,
+      firstName,
+      lastName,
+      birthDay,
+      birthMonth,
+      role: "USER",
+      userMode: "PERSONAL",
+    });
+
+    await userRepo().save(user);
+
+    const jwtToken = jwt.sign(
+      { userId: user.id, lang: user.lang, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.json({ token: jwtToken, user: buildUserDto(user) });
+  } catch (err) {
+    console.error("Google complete error:", err);
+    return res.status(500).json({ message: "INTERNAL_SERVER_ERROR" });
+  }
+});
+
+/* =====================
+   VERIFY EMAIL
+   ===================== */
+authRouter.get("/verify-email", async (req: Request, res: Response) => {
+  try {
+    const { token } = req.query;
+
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ message: "TOKEN_REQUIRED" });
+    }
+
+    const user = await userRepo().findOne({
+      where: { emailVerificationToken: token },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "INVALID_TOKEN" });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ message: "EMAIL_ALREADY_VERIFIED" });
+    }
+
+    user.emailVerified = true;
+    user.emailVerificationToken = null;
+    await userRepo().save(user);
+
+    const jwtToken = jwt.sign(
+        { userId: user.id, lang: user.lang, role: user.role },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+    );
+
+    return res.json({ token: jwtToken, user: buildUserDto(user) });
+  } catch (err) {
+    console.error("Verify email error:", err);
+    return res.status(500).json({ message: "INTERNAL_ERROR" });
+  }
+});
+
+/* =====================
+   RESEND VERIFICATION EMAIL
+   ===================== */
+authRouter.post("/resend-verification", async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "EMAIL_REQUIRED" });
+    }
+
+    const user = await userRepo().findOne({ where: { email } });
+
+    if (!user) {
+      // Не розкриваємо, чи існує користувач з таким email
+      return res.json({ message: "EMAIL_SENT" });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ message: "EMAIL_ALREADY_VERIFIED" });
+    }
+
+    // Генеруємо новий токен
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+    user.emailVerificationToken = verificationToken;
+    await userRepo().save(user);
+
+    // Відправляємо email
+    emailService.sendVerificationEmail(user.email!, verificationToken, user.username).catch((err) => {
+      console.error("[Email Error]:", err);
+    });
+
+    return res.json({ message: "EMAIL_SENT" });
+  } catch (err) {
+    console.error("Resend verification error:", err);
+    return res.status(500).json({ message: "INTERNAL_ERROR" });
+  }
+});
 

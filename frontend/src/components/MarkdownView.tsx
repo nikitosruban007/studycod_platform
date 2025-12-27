@@ -96,6 +96,14 @@ export const MarkdownView: React.FC<MarkdownViewProps> = memo(({ content }) => {
       prose-ul:text-text-primary prose-ol:text-text-primary
       prose-li:text-text-primary
       prose-a:text-secondary prose-a:no-underline hover:prose-a:underline
+      prose-img:rounded prose-img:border prose-img:border-border prose-img:bg-bg-surface prose-img:p-1
+      prose-img:my-4 prose-img:max-w-full prose-img:cursor-zoom-in
+      prose-blockquote:rounded-xl prose-blockquote:border prose-blockquote:border-border
+      prose-blockquote:bg-bg-surface/60 prose-blockquote:px-4 prose-blockquote:py-3
+      prose-blockquote:shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_18px_40px_rgba(0,0,0,0.35)]
+      prose-blockquote:not-italic prose-blockquote:my-4
+      prose-blockquote:[&>p]:text-text-primary prose-blockquote:[&>p]:text-sm
+      prose-blockquote:[&>p>code]:text-text-primary
       [&_.katex]:text-text-primary [&_.katex]:!text-text-primary
       [&_.katex-display]:my-4
       [&_.katex-display]:!text-text-primary

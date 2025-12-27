@@ -24,6 +24,7 @@ function buildUserDto(user: User) {
     difus: difusValue ?? 0,
     avatarUrl: user.avatarUrl ?? null,
     userMode: user.userMode,
+    role: user.role || null,
     googleId: user.googleId ?? null,
   };
 }

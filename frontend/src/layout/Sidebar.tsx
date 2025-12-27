@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Code2, LayoutDashboard, CheckCircle2, GraduationCap, BookOpen, User, LogOut } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { User as AuthUser } from '../types';
 
 interface SidebarProps {
@@ -9,12 +10,13 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ user, onLogout }) => {
+  const { t } = useTranslation();
   const menu = [
-    { to: '/dashboard', label: 'Головна', icon: LayoutDashboard },
-    { to: '/tasks', label: 'Завдання', icon: CheckCircle2 },
-    { to: '/grades', label: 'Оцінки', icon: GraduationCap },
-    { to: '/theory', label: 'Теорія', icon: BookOpen },
-    { to: '/profile', label: 'Профіль', icon: User },
+    { to: '/dashboard', label: t('home'), icon: LayoutDashboard },
+    { to: '/tasks', label: t('tasks'), icon: CheckCircle2 },
+    { to: '/grades', label: t('grades'), icon: GraduationCap },
+    { to: '/theory', label: t('theory'), icon: BookOpen },
+    { to: '/profile', label: t('profile'), icon: User },
   ];
 
   return (
@@ -61,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onLogout }) => {
           className="w-full flex items-center space-x-3 px-4 py-2 text-accent-error hover:bg-accent-error/10 hover:text-accent-error rounded-none border border-transparent hover:border-accent-error/20 transition-fast"
         >
           <LogOut size={18} />
-          <span className="text-xs">Вийти</span>
+          <span className="text-xs">{t('logout')}</span>
         </button>
       </div>
     </aside>

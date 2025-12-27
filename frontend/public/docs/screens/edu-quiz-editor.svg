@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="880" viewBox="0 0 1400 880">
+  <defs>
+    <style>
+      .bg { fill:#0b0f14; }
+      .panel { fill:#0f1620; stroke:#233043; stroke-width:2; }
+      .muted { fill:#9fb3c8; font:500 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .title { fill:#d6e1f0; font:800 30px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .mono { fill:#d6e1f0; font:700 18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .card { fill:#0b0f14; stroke:#233043; stroke-width:2; }
+      .ok { fill:#0b1510; stroke:#00ff88; stroke-width:2; }
+      .warn { fill:#17120b; stroke:#ffd93d; stroke-width:2; }
+      .chipTextOk { fill:#00ff88; font:800 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+      .chipTextWarn { fill:#ffd93d; font:800 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="880"/>
+  <rect class="panel" x="40" y="30" width="1320" height="84" rx="14"/>
+  <text class="mono" x="78" y="82">Quiz редактор</text>
+  <text class="muted" x="930" y="82">Вчитель · CONTROL · /edu/lessons/:id</text>
+
+  <rect class="panel" x="40" y="140" width="1320" height="710" rx="14"/>
+  <text class="title" x="78" y="196">Самостійна робота №1 — Теорія (Quiz)</text>
+  <text class="muted" x="78" y="230">Додавай/редагуй питання, правильні відповіді підсвічені.</text>
+
+  <!-- question 1 -->
+  <rect class="card" x="78" y="270" width="1244" height="160" rx="14"/>
+  <text class="mono" x="110" y="312">1. Що таке масив?</text>
+  <rect class="ok" x="110" y="332" width="520" height="40" rx="12"/>
+  <text class="chipTextOk" x="130" y="358">А) Структура даних з елементами одного типу ✓</text>
+  <rect class="card" x="110" y="380" width="520" height="40" rx="12"/>
+  <text class="muted" x="130" y="406">Б) Будь-який набір різних типів</text>
+  <rect class="card" x="680" y="332" width="520" height="40" rx="12"/>
+  <text class="muted" x="700" y="358">В) Клас для зберігання рядків</text>
+  <rect class="card" x="680" y="380" width="520" height="40" rx="12"/>
+  <text class="muted" x="700" y="406">Г) Функція пошуку</text>
+
+  <!-- toolbar -->
+  <rect class="warn" x="110" y="446" width="170" height="44" rx="12"/>
+  <text class="chipTextWarn" x="134" y="474">+ Додати питання</text>
+  <rect class="ok" x="300" y="446" width="190" height="44" rx="12"/>
+  <text class="chipTextOk" x="326" y="474">Зберегти quiz</text>
+
+  <!-- question list -->
+  <rect class="card" x="78" y="510" width="1244" height="310" rx="14"/>
+  <text class="mono" x="110" y="552">Список питань</text>
+  <text class="muted" x="110" y="586">• Питання 1 — правильна: А</text>
+  <text class="muted" x="110" y="618">• Питання 2 — правильна: В</text>
+  <text class="muted" x="110" y="650">• Питання 3 — правильна: Г</text>
+  <text class="muted" x="110" y="682">• ...</text>
+</svg>
+
+

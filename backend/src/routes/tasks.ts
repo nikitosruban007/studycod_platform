@@ -5,18 +5,23 @@ import { Task, TaskType } from "../entities/Task";
 import { Topic } from "../entities/Topic";
 import { Grade } from "../entities/Grade";
 import { User } from "../entities/User";
+import { TestData } from "../entities/TestData";
 import { authMiddleware, AuthRequest } from "../middleware/authMiddleware";
-import { evaluateCodeWithAI, computeTotalFromParts } from "../ai/evaluator";
 import {
   generateTaskWithAI,
   generateTheoryWithAI,
   generateQuizWithAI,
 } from "../services/openRouterService";
+import { safeAICall, sendAIError } from "../services/ai/safeAICall";
 import { checkMilestone } from "../utils/milestoneDetector";
 import { getStableDifus } from "../utils/adaptiveDifficulty";
 import {
   executeCodeWithInput,
 } from "../services/codeExecutionService";
+import { computeTotalFromParts, evaluateCodeWithAI } from "../ai/evaluator";
+import { judgeWithSemaphore } from "../services/judgeWorker";
+import { JudgeBusyError } from "../services/judgeWorker/Semaphore";
+import type { JudgeRequest as WorkerJudgeRequest, JudgeResponse as WorkerJudgeResponse } from "../services/judgeWorker/types";
 
 const tasksRouter = Router();
 
@@ -24,6 +29,7 @@ const taskRepo = () => AppDataSource.getRepository(Task);
 const topicRepo = () => AppDataSource.getRepository(Topic);
 const gradeRepo = () => AppDataSource.getRepository(Grade);
 const userRepo = () => AppDataSource.getRepository(User);
+const testDataRepo = () => AppDataSource.getRepository(TestData);
 
 type TaskStatus = "OPEN" | "SUBMITTED" | "GRADED";
 
@@ -39,7 +45,8 @@ function mapTaskToDto(task: Task) {
     title: task.title,
     descriptionMarkdown: task.descriptionMarkdown || task.description,
     starterCode: task.template,
-    userCode: status === "GRADED" ? "" : task.draftCode || "",
+    userCode: status === "GRADED" ? (task.finalCode || "") : (task.draftCode || ""),
+    finalCode: task.finalCode || null,
     status,
     lessonInTopic: task.numInTopic ?? 1,
     repeatAttempt: 0,
@@ -51,16 +58,22 @@ function mapTaskToDto(task: Task) {
 
 tasksRouter.get("/", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const where: any = { user: { id: req.userId } };
-    if (req.lang) where.lang = req.lang;
+    if (!req.userId) {
+      return res.status(401).json({ message: "UNAUTHORIZED" });
+    }
 
     const tasks = await taskRepo().find({
-      where,
-      order: { createdAt: "DESC" } as any,
+      where: {
+        user: { id: req.userId },
+        ...(req.lang && { lang: req.lang as "JAVA" | "PYTHON" }),
+      },
+      order: { createdAt: "DESC" },
+      relations: ["user", "topic"],
     });
 
     return res.json(tasks.map(mapTaskToDto));
-  } catch {
+  } catch (error) {
+    console.error("GET /tasks error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -73,8 +86,13 @@ tasksRouter.get(
         const id = Number(req.params.id);
         if (!id) return res.status(400).json({ message: "Invalid id" });
 
+        if (!req.userId) {
+          return res.status(401).json({ message: "UNAUTHORIZED" });
+        }
+
         const task = await taskRepo().findOne({
-          where: { id, user: { id: req.userId } } as any,
+          where: { id, user: { id: req.userId } },
+          relations: ["user", "topic", "testData"],
         });
 
         if (!task) return res.status(404).json({ message: "Task not found" });
@@ -98,15 +116,17 @@ tasksRouter.post(
         if (!user) return res.status(404).json({ message: "USER_NOT_FOUND" });
 
         const tasks = await taskRepo().find({
-          where: { user: { id: userId }, lang } as any,
+          where: { user: { id: userId }, lang },
+          relations: ["user", "topic"],
         });
 
         for (const t of tasks) {
           const g = await gradeRepo().findOne({
-            where: { user: { id: userId }, task: { id: t.id } } as any,
+            where: { user: { id: userId }, task: { id: t.id } },
           });
           if (!g) {
             return res.status(400).json({
+              status: "blocked",
               message: "COMPLETE_PREVIOUS_TASK",
               taskId: t.id,
             });
@@ -114,19 +134,22 @@ tasksRouter.post(
         }
 
         const topics = await topicRepo().find({
-          where: { lang } as any,
-          order: { topicIndex: "ASC" } as any,
+          where: { lang },
+          order: { topicIndex: "ASC" },
         });
         if (!topics.length)
-          return res.status(404).json({ message: "NO_TOPICS" });
+          return res.status(404).json({ status: "error", message: "NO_TOPICS" });
+
+        const REQUIRED_TASKS_FOR_INTRO_TOPIC = 1;
+        const REQUIRED_TASKS_FOR_REGULAR_TOPIC = 3;
 
         let topic: Topic | null = null;
 
         for (const t of topics) {
           const count = await taskRepo().count({
-            where: { user: { id: userId }, topic: { id: t.id } } as any,
+            where: { user: { id: userId }, topic: { id: t.id } },
           });
-          const required = t.topicIndex === 0 ? 1 : 3;
+          const required = t.topicIndex === 0 ? REQUIRED_TASKS_FOR_INTRO_TOPIC : REQUIRED_TASKS_FOR_REGULAR_TOPIC;
           if (count < required) {
             topic = t;
             break;
@@ -134,7 +157,7 @@ tasksRouter.post(
         }
 
         if (!topic)
-          return res.status(400).json({ message: "ALL_TOPICS_COMPLETED" });
+          return res.status(400).json({ status: "blocked", message: "ALL_TOPICS_COMPLETED" });
 
         const difus = await getStableDifus(
             userId,
@@ -146,7 +169,7 @@ tasksRouter.post(
 
         const numInTopic =
             (await taskRepo().count({
-              where: { user: { id: userId }, topic: { id: topic.id } } as any,
+              where: { user: { id: userId }, topic: { id: topic.id } },
             })) + 1;
 
         let description = topic.theoryMarkdown;
@@ -160,7 +183,8 @@ tasksRouter.post(
                   "}",
                 ].join("\n");
 
-        const aiTask = await generateTaskWithAI({
+        // Безпечний виклик AI з валідацією
+        const aiTaskResult = await safeAICall('generateTask', {
           topicTitle: topic.title,
           theory: topic.theoryMarkdown,
           lang,
@@ -171,11 +195,17 @@ tasksRouter.post(
           topicId: topic.id,
         });
 
-        description = aiTask.theoryMarkdown + "\n\n" + aiTask.practicalTask;
+        if (!aiTaskResult.success) {
+          return sendAIError(res, aiTaskResult.error);
+        }
+
+        const aiTask = aiTaskResult.data;
+        // Додаємо маркер для розділення теорії та практики
+        description = aiTask.theoryMarkdown + "\n\n### Практика\n\n" + aiTask.practicalTask;
         template = aiTask.codeTemplate;
 
         const task = taskRepo().create({
-          user: { id: userId } as any,
+          user: { id: userId },
           topic,
           title: topic.title,
           subtitle: "",
@@ -190,11 +220,86 @@ tasksRouter.post(
           numInTopic,
           topicIndex: topic.topicIndex,
           type: "TOPIC" as TaskType,
-        } as any);
+        });
 
         const saved = await taskRepo().save(task);
-        return res.json({ task: mapTaskToDto(saved as any) });
-      } catch {
+
+        const REQUIRED_TEST_COUNT = 12;
+        const userLanguage: "uk" | "en" = (req.headers['accept-language']?.includes('en') || req.body?.language === 'en') ? "en" : "uk";
+        const testDataResult = await safeAICall('generateTestData', {
+          taskDescription: description,
+          taskTitle: topic.title,
+          lang,
+          count: REQUIRED_TEST_COUNT,
+          userId,
+        }, { expectedCount: REQUIRED_TEST_COUNT, language: userLanguage });
+
+        if (!testDataResult.success) {
+          // Якщо генерація тестів не вдалася, видаляємо створене завдання
+          await taskRepo().remove(saved);
+          return sendAIError(res, testDataResult.error);
+        }
+
+        const testExamples = testDataResult.data;
+
+        const POINTS_PER_TEST = 1;
+        const newTestData = testExamples.map((ex: { input?: string; output?: string }) => {
+          return testDataRepo().create({
+            input: ex.input || "",
+            expectedOutput: ex.output || "",
+            points: POINTS_PER_TEST,
+            personalTask: { id: saved.id },
+          });
+        });
+
+        await testDataRepo().save(newTestData);
+
+        return res.json({ status: "ok", task: mapTaskToDto(saved) });
+      } catch (error: any) {
+        console.error("[tasks] POST /generate error:", error);
+        // Якщо це вже оброблена AI помилка, вона вже відправлена
+        if (error.statusCode) {
+          return res.status(error.statusCode).json({ message: error.message, error: error.error });
+        }
+        return res.status(500).json({ message: "Internal server error" });
+      }
+    }
+);
+
+tasksRouter.post(
+    "/reset-topic",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const { topicId } = req.body;
+
+        if (!topicId || typeof topicId !== "number") {
+          return res.status(400).json({ message: "topicId is required and must be a number" });
+        }
+
+        // Знаходимо всі задачі користувача для цієї теми
+        const tasks = await taskRepo().find({
+          where: { user: { id: userId }, topic: { id: topicId } },
+        });
+
+        // Видаляємо всі оцінки для цих задач
+        for (const task of tasks) {
+          await gradeRepo().delete({
+            user: { id: userId },
+            task: { id: task.id },
+          });
+        }
+
+        // Видаляємо всі задачі (testData видаляться автоматично через CASCADE)
+        await taskRepo().delete({
+          user: { id: userId },
+          topic: { id: topicId },
+        });
+
+        return res.json({ message: "Topic reset successfully" });
+      } catch (error: any) {
+        console.error("[tasks] POST /reset-topic error:", error);
         return res.status(500).json({ message: "Internal server error" });
       }
     }
@@ -212,10 +317,17 @@ tasksRouter.post(
       const id = Number(req.params.id);
       const { code } = req.body as { code: string };
 
+        if (!req.userId) {
+          return res.status(401).json({ message: "UNAUTHORIZED" });
+        }
+
       const task = await taskRepo().findOne({
-        where: { id, user: { id: req.userId } } as any,
+          where: { id, user: { id: req.userId } },
       });
-      if (!task) return res.status(404).json({ message: "Task not found" });
+        
+        if (!task) {
+          return res.status(404).json({ message: "Task not found" });
+        }
 
       task.draftCode = code;
       await taskRepo().save(task);
@@ -226,54 +338,277 @@ tasksRouter.post(
 tasksRouter.post(
     "/:id/submit",
     authMiddleware,
-    [body("code").isString()],
+    [
+      body("code").isString(),
+      body("mode").optional().isIn(["TESTS", "AI"]),
+    ],
     async (req: AuthRequest, res: Response) => {
       const errors = validationResult(req);
       if (!errors.isEmpty())
         return res.status(400).json({ errors: errors.array() });
 
       const id = Number(req.params.id);
-      const { code } = req.body as { code: string };
+      const { code, mode } = req.body as { code: string; mode?: "TESTS" | "AI" };
+      const submitMode: "TESTS" | "AI" = mode ?? "TESTS";
+
+      if (!req.userId) {
+        return res.status(401).json({ message: "UNAUTHORIZED" });
+      }
 
       const task = await taskRepo().findOne({
-        where: { id, user: { id: req.userId } } as any,
+        where: { id, user: { id: req.userId } },
+        relations: ["testData"],
       });
       if (!task) return res.status(404).json({ message: "Task not found" });
 
-      const ai = await evaluateCodeWithAI({
-        code,
-        language: task.lang,
-        task,
-      });
+      // Personal tasks always have tests generated on create; we keep them required for TESTS mode.
+      if (submitMode === "TESTS" && (!task.testData || task.testData.length === 0)) {
+        return res.status(400).json({
+          message: "Test data is required for personal tasks. Please regenerate the task.",
+        });
+      }
 
-      const total = computeTotalFromParts({
-        work: ai.work ?? 0,
-        optimization: ai.optimization ?? 0,
-        integrity: ai.integrity ?? 0,
-      });
+      const MIN_GRADE = 1;
+      const MAX_GRADE = 12;
+      const TASK_COMPLETED_FLAG = 1;
+
+      if (submitMode === "AI") {
+        // Load previous grade attempt (for comparison, if any)
+        const previous = await gradeRepo().findOne({
+          where: {
+            user: { id: req.userId },
+            task: { id: task.id },
+          },
+          order: { createdAt: "DESC" },
+          relations: ["task"],
+        });
+
+        const ai = await evaluateCodeWithAI({
+          code,
+          language: task.lang,
+          task,
+          previousCode: previous?.codeSnapshot ?? undefined,
+          previousGrade: previous?.total ?? undefined,
+          previousScores: previous
+            ? {
+                work: Number(previous.workScore ?? 0),
+                optimization: Number(previous.optimizationScore ?? 0),
+                integrity: Number(previous.integrityScore ?? 0),
+              }
+            : undefined,
+        });
+
+        const total = computeTotalFromParts({
+          work: ai.work,
+          optimization: ai.optimization,
+          integrity: ai.integrity,
+        });
+
+        const comparisonFeedback =
+          ai.comparison?.changes?.length
+            ? ai.comparison.changes
+                .map((c) => {
+                  const category =
+                    c.category === "work"
+                      ? "Працездатність"
+                      : c.category === "optimization"
+                      ? "Оптимізація"
+                      : "Доброчесність";
+                  const sign = c.delta >= 0 ? "+" : "";
+                  const line = c.codeLine ? ` (рядок ${c.codeLine})` : "";
+                  return `${category}: ${sign}${c.delta}${line} — ${c.reason}`;
+                })
+                .join("\n")
+            : null;
+
+        task.finalCode = code;
+        task.completed = TASK_COMPLETED_FLAG;
+        await taskRepo().save(task);
+
+        const grade = gradeRepo().create({
+          user: { id: req.userId },
+          task: { id: task.id },
+          total: Math.min(MAX_GRADE, Math.max(MIN_GRADE, total)),
+          workScore: ai.work,
+          optimizationScore: ai.optimization,
+          integrityScore: ai.integrity,
+          aiFeedback: ai.feedback,
+          codeSnapshot: code,
+          previousGradeId: previous?.id ?? null,
+          comparisonFeedback: comparisonFeedback ?? null,
+        });
+
+        const savedGradeResult = await gradeRepo().save(grade);
+        const savedGrade = Array.isArray(savedGradeResult) ? savedGradeResult[0] : savedGradeResult;
+
+        return res.json({
+          grade: {
+            id: savedGrade.id,
+            gradingMode: "AI" as const,
+            total: savedGrade.total,
+            workScore: savedGrade.workScore ?? 0,
+            optimizationScore: savedGrade.optimizationScore ?? 0,
+            integrityScore: savedGrade.integrityScore ?? 0,
+            aiFeedback: savedGrade.aiFeedback,
+            comparisonFeedback: savedGrade.comparisonFeedback ?? null,
+            previousGrade: previous?.total ?? null,
+            createdAt: savedGrade.createdAt,
+          },
+        });
+      }
+
+      // TESTS mode (classic judge-by-tests)
+      let total = 0;
+      let passedTests = 0;
+
+      const testResults: Array<{
+        testId: number;
+        input: string;
+        actualOutput: string;
+        passed: boolean;
+        error?: string | null;
+      }> = [];
+
+      const sorted = [...(task.testData || [])].sort((a, b) => a.id - b.id);
+      const tests = sorted.map((t) => ({
+        id: t.id,
+        input: t.input || "",
+        output: t.expectedOutput || "",
+        // Personal mode: keep tests visible (not hidden), unless you later add hidden tests explicitly.
+        hidden: false,
+      }));
+
+      const judgeLang = task.lang === "JAVA" ? "java" : task.lang === "PYTHON" ? "python" : "cpp";
+      const defaultLimitsByLang = {
+        java: { time_limit_ms: 1200, memory_limit_mb: 256, output_limit_kb: 64 },
+        python: { time_limit_ms: 900, memory_limit_mb: 128, output_limit_kb: 64 },
+        cpp: { time_limit_ms: 800, memory_limit_mb: 256, output_limit_kb: 64 },
+      } as const;
+
+      const workerReq: WorkerJudgeRequest = {
+        submission_id: `personal_${req.userId}_${task.id}_${Date.now()}`,
+        language: judgeLang,
+        source: code,
+        tests,
+        limits: defaultLimitsByLang[judgeLang],
+        checker: { type: "whitespace" },
+        debug: false,
+      };
+
+      let workerRes: WorkerJudgeResponse | null = null;
+
+      try {
+        workerRes = await judgeWithSemaphore(workerReq);
+      } catch (e) {
+        if (e instanceof JudgeBusyError) {
+          return res.status(429).json({ message: "JUDGE_BUSY" });
+        }
+        // Fallback to the legacy local executor if judge worker is unavailable (dev on Windows, etc.).
+        const { compareOutput, filterStderr } = await import("../services/codeExecutionService");
+        const CODE_EXECUTION_TIMEOUT_MS = 8000;
+
+        for (const test of sorted) {
+          try {
+            const inputValue = test.input || "";
+            const result = await executeCodeWithInput(code, task.lang, inputValue, CODE_EXECUTION_TIMEOUT_MS);
+
+            const actual = (result.stdout ?? "").trim();
+            const expected = (test.expectedOutput ?? "").trim();
+            const passed = !!(result.success && compareOutput(actual, expected));
+            if (passed) {
+              passedTests++;
+              total += test.points;
+            }
+
+            const err = filterStderr(result.stderr || "");
+            testResults.push({
+              testId: test.id,
+              input: inputValue,
+              actualOutput: actual,
+              passed,
+              error: err ? err : null,
+            });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            testResults.push({
+              testId: test.id,
+              input: test.input || "",
+              actualOutput: "",
+              passed: false,
+              error: errorMessage,
+            });
+          }
+        }
+      }
+
+      if (workerRes) {
+        const resultsById = new Map<string, (typeof workerRes.tests)[number]>();
+        for (const r of workerRes.tests) {
+          resultsById.set(String(r.test_id), r);
+        }
+
+        for (const t of sorted) {
+          const r = resultsById.get(String(t.id));
+          const passed = r?.verdict === "AC";
+          if (passed) {
+            passedTests++;
+            total += t.points;
+          }
+          testResults.push({
+            testId: t.id,
+            input: t.input || "",
+            actualOutput: r?.actual ?? "",
+            passed,
+            error: r?.stderr ?? null,
+          });
+        }
+      }
+
+      const feedbackLines: string[] = [];
+      feedbackLines.push(`Пройдено тестів: ${passedTests}/${(task.testData || []).length}`);
+      feedbackLines.push("");
+      for (const r of testResults) {
+        if (r.passed) {
+          feedbackLines.push(`✓ Тест ${r.testId}: пройдено`);
+        } else if (r.error) {
+          feedbackLines.push(`✗ Тест ${r.testId}: помилка — ${r.error}`);
+        } else {
+          feedbackLines.push(`✗ Тест ${r.testId}: не пройдено`);
+        }
+      }
+
+      const feedback = feedbackLines.join("\n");
 
       task.finalCode = code;
-      task.completed = 1;
+      task.completed = TASK_COMPLETED_FLAG;
       await taskRepo().save(task);
 
       const grade = gradeRepo().create({
-        user: { id: req.userId } as any,
-        task: { id: task.id } as any,
-        total,
-        workScore: ai.work ?? 0,
-        optimizationScore: ai.optimization ?? 0,
-        integrityScore: ai.integrity ?? 0,
-        aiFeedback: ai.feedback,
+        user: { id: req.userId },
+        task: { id: task.id },
+        total: Math.min(MAX_GRADE, Math.max(MIN_GRADE, total)),
+        // Not used in TESTS mode, but keep null-ish values.
+        workScore: 0,
+        optimizationScore: 0,
+        integrityScore: 0,
+        aiFeedback: feedback,
         codeSnapshot: code,
-      } as any);
+        comparisonFeedback: null,
+        previousGradeId: null,
+      });
 
-      const savedGrade = await gradeRepo().save(grade);
+      const savedGradeResult = await gradeRepo().save(grade);
+      const savedGrade = Array.isArray(savedGradeResult) ? savedGradeResult[0] : savedGradeResult;
 
       return res.json({
         grade: {
           id: savedGrade.id,
+          gradingMode: "TESTS" as const,
           total: savedGrade.total,
           aiFeedback: savedGrade.aiFeedback,
+          testsPassed: passedTests,
+          testsTotal: (task.testData || []).length,
+          testResults,
           createdAt: savedGrade.createdAt,
         },
       });
@@ -292,25 +627,34 @@ tasksRouter.post(
       const id = Number(req.params.id);
       const { code, input } = req.body as { code: string; input?: string };
 
-      const task = await taskRepo().findOne({
-        where: { id, user: { id: req.userId } } as any,
-      });
-      if (!task) return res.status(404).json({ message: "Task not found" });
+      if (!req.userId) {
+        return res.status(401).json({ message: "UNAUTHORIZED" });
+      }
 
+      const task = await taskRepo().findOne({
+        where: { id, user: { id: req.userId } },
+      });
+
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const CODE_RUN_TIMEOUT_MS = 5000;
       try {
         const result = await executeCodeWithInput(
             code,
-            task.lang as any,
+            task.lang,
             input || "",
-            5000
+            CODE_RUN_TIMEOUT_MS
         );
         return res.json({ 
           output: result.stdout, 
           stderr: result.stderr, 
           success: result.success 
         });
-      } catch (err: any) {
-        return res.status(500).json({ message: err.message || "Execution error" });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Execution error";
+        return res.status(500).json({ message: errorMessage });
       }
     }
 );
